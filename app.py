@@ -43,7 +43,7 @@ def db_connect():
     return conn
 
 def db_init():
-    """Create table and migrate from manifest JSON if needed."""
+    """Create tables and migrate from manifest JSON if needed."""
     conn = db_connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
@@ -58,6 +58,16 @@ def db_init():
             data_json   TEXT,
             created_at  TEXT,
             updated_at  TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS save_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            db_key       TEXT,
+            project_name TEXT,
+            action       TEXT,
+            detail       TEXT,
+            timestamp    TEXT
         )
     """)
     conn.commit()
@@ -127,17 +137,44 @@ def db_save(key, project_name, project_name_th, doc, phase, proj_data):
     conn.commit()
     conn.close()
 
-def db_touch(key):
+def db_touch(key, project_name=""):
     """Update updated_at timestamp (on Load)."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = db_connect()
+    if not project_name:
+        r = conn.execute("SELECT project_name FROM projects WHERE key=?", (key,)).fetchone()
+        project_name = r["project_name"] if r else ""
     conn.execute("UPDATE projects SET updated_at=? WHERE key=?", (now, key))
     conn.commit(); conn.close()
+    db_log(key, project_name, "▶ Loaded", "Project loaded into active workspace")
 
 def db_delete(key):
     conn = db_connect()
     conn.execute("DELETE FROM projects WHERE key=?", (key,))
     conn.commit(); conn.close()
+
+def db_log(db_key, project_name, action, detail=""):
+    """Write one entry to the activity log."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = db_connect()
+    conn.execute(
+        "INSERT INTO save_log (db_key,project_name,action,detail,timestamp) VALUES (?,?,?,?,?)",
+        (db_key or "", project_name or "", action, detail, now))
+    conn.commit(); conn.close()
+
+def db_get_log(limit=50, db_key=None):
+    """Return recent log entries, optionally filtered to one project."""
+    conn = db_connect()
+    if db_key:
+        rows = conn.execute(
+            "SELECT * FROM save_log WHERE db_key=? ORDER BY timestamp DESC LIMIT ?",
+            (db_key, limit)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM save_log ORDER BY timestamp DESC LIMIT ?",
+            (limit,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 db_init()   # run once on startup
 
@@ -159,8 +196,11 @@ def save_data(d):
     # Auto-sync to SQLite if this project is tracked in the DB
     _key = d.get("_db_key")
     if _key:
+        n = len(d.get("activities",[]))
         db_save(_key, d.get("project_name",""), d.get("project_name_th",""),
                 d.get("_db_doc","CUSTOM"), d.get("_db_phase","Custom"), d)
+        db_log(_key, d.get("project_name",""), "💾 Saved",
+               f"{n} activities | budget ฿{d.get('total_budget',0):,.0f}")
 
 @st.cache_data
 def get_labels(start_iso, n):
@@ -555,6 +595,7 @@ elif page=="📥 Import WBS":
                         st.error("Project data not found in database.")
 
                 if c_del.button("🗑️", key=f"db_del_{e['key']}", help=f"Delete '{e['project_name']}'"):
+                    db_log(e["key"], e["project_name"], "🗑️ Deleted", "Removed from library")
                     db_delete(e["key"])
                     st.success(f"🗑️ Deleted **{e['project_name']}**")
                     st.rerun()
@@ -579,11 +620,65 @@ elif page=="📥 Import WBS":
                 save_proj["_db_doc"]   = lib_doc
                 save_proj["_db_phase"] = lib_phase
                 db_save(safe_key, lib_name, lib_name_th, lib_doc, lib_phase, save_proj)
+                db_log(safe_key, lib_name, "➕ Added to Library",
+                       f"{len(data.get('activities',[]))} activities")
                 # Also write back to project_data.json so the tracking keys persist immediately
                 with open(DATA_FILE, "w", encoding="utf-8") as _f:
                     json.dump(save_proj, _f, ensure_ascii=False, indent=2)
                 st.cache_data.clear()
                 st.success(f"✅ Saved **{lib_name}** to database — edits will now auto-sync")
+                st.rerun()
+
+        # ── Activity Log ──────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 📋 Activity Log")
+
+        log_filter = st.selectbox("Filter by project", ["All projects"] + [e["project_name"] for e in db_list()],
+                                   label_visibility="collapsed", key="log_filter")
+        log_key = None
+        if log_filter != "All projects":
+            matched = [e for e in db_list() if e["project_name"] == log_filter]
+            if matched: log_key = matched[0]["key"]
+
+        log_entries = db_get_log(limit=60, db_key=log_key)
+
+        if not log_entries:
+            st.info("No activity recorded yet. Load or save a project to start logging.")
+        else:
+            action_colors = {
+                "💾 Saved":           "#7BA2F1",
+                "▶ Loaded":           "#BDE0A9",
+                "➕ Added to Library": "#F4A25E",
+                "🗑️ Deleted":         "#F07070",
+            }
+            log_df = pd.DataFrame([{
+                "Timestamp":    e["timestamp"],
+                "Action":       e["action"],
+                "Project":      e["project_name"][:45],
+                "Detail":       e["detail"],
+            } for e in log_entries])
+
+            st.dataframe(
+                log_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Timestamp": st.column_config.TextColumn("🕐 Time",    width="medium"),
+                    "Action":    st.column_config.TextColumn("Action",      width="small"),
+                    "Project":   st.column_config.TextColumn("Project",     width="large"),
+                    "Detail":    st.column_config.TextColumn("Detail",      width="large"),
+                }
+            )
+
+            lc1, lc2 = st.columns([4,1])
+            lc1.caption(f"{len(log_entries)} entries shown")
+            if lc2.button("🗑️ Clear Log", use_container_width=True):
+                conn = db_connect()
+                if log_key:
+                    conn.execute("DELETE FROM save_log WHERE db_key=?", (log_key,))
+                else:
+                    conn.execute("DELETE FROM save_log")
+                conn.commit(); conn.close()
                 st.rerun()
 
     with tab2:
