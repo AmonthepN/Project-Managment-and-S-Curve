@@ -145,8 +145,10 @@ if page=="🏠 Dashboard":
                 fillcolor="rgba(189,224,169,.15)",line=dict(color="#BDE0A9",width=3),
                 mode="lines+markers",marker=dict(size=8,symbol="diamond"),
                 hovertemplate="<b>%{x}</b><br>Actual: %{y:.1f}%<extra></extra>"))
-        if cm<=N: fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#F4A25E",
-                                annotation_text="TODAY",annotation_font_color="#F4A25E")
+        if cm<=N:
+            fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#F4A25E")
+            fig.add_annotation(x=labels[cm-1],y=105,text="TODAY",showarrow=False,
+                font=dict(color="#F4A25E",size=11),xanchor="left")
         fig.update_layout(paper_bgcolor="#2D3747",plot_bgcolor="#1A2030",
             font_color="#E8ECF0",height=280,margin=dict(l=10,r=10,t=10,b=10),
             xaxis=dict(gridcolor="#3D4557"),yaxis=dict(gridcolor="#3D4557",range=[0,105]),
@@ -184,9 +186,10 @@ elif page=="📈 S-Curve":
             fillcolor="rgba(189,224,169,.15)",line=dict(color="#BDE0A9",width=3),
             mode="lines+markers",marker=dict(size=9,symbol="diamond"),
             hovertemplate="<b>%{x}</b><br>Actual: %{y:.1f}%<extra></extra>"))
-    if cm<=N: fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#F4A25E",
-                            annotation_text=f"M{cm} TODAY",annotation_font_color="#F4A25E",
-                            annotation_position="top left")
+    if cm<=N:
+        fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#F4A25E")
+        fig.add_annotation(x=labels[cm-1],y=105,text=f"M{cm} TODAY",showarrow=False,
+            font=dict(color="#F4A25E",size=11),xanchor="left")
     fig.update_layout(paper_bgcolor="#2D3747",plot_bgcolor="#1A2030",
         font=dict(color="#E8ECF0",size=13),height=460,margin=dict(l=20,r=20,t=30,b=20),
         xaxis=dict(title="Month",gridcolor="#3D4557",tickangle=-30),
@@ -222,8 +225,9 @@ elif page=="📅 Gantt":
         fig=px.timeline(df,x_start="Start",x_end="Finish",y="Task",color="Status",
                         color_discrete_map=SCOL,hover_data=["Weight"])
         fig.update_yaxes(autorange="reversed")
-        fig.add_vline(x=date.today().isoformat(),line_dash="dash",line_color="#F4A25E",
-                      annotation_text="TODAY",annotation_font_color="#F4A25E")
+        fig.add_vline(x=date.today().isoformat(),line_dash="dash",line_color="#F4A25E")
+        fig.add_annotation(x=date.today().isoformat(),y=1.02,yref="paper",
+            text="TODAY",showarrow=False,font=dict(color="#F4A25E",size=11),xanchor="left")
         fig.update_layout(paper_bgcolor="#2D3747",plot_bgcolor="#1A2030",
             font=dict(color="#E8ECF0",size=11),height=420,margin=dict(l=10,r=10,t=20,b=10),
             xaxis=dict(gridcolor="#3D4557"),yaxis=dict(gridcolor="#3D4557"),legend=dict(bgcolor="#515863"))
@@ -255,9 +259,15 @@ elif page=="📊 EVM Indicators":
     xs=[labels[i] for i,v in enumerate(spi_v) if v is not None]; ys=[v for v in spi_v if v is not None]
     if ys:
         fig=go.Figure()
-        fig.add_hline(y=1.0,line_color="#7BA2F1",annotation_text="Target SPI=1.0",annotation_font_color="#7BA2F1")
-        fig.add_hline(y=0.95,line_dash="dot",line_color="#F4A25E",annotation_text="⚠️ Warning")
-        fig.add_hline(y=0.80,line_dash="dot",line_color="#F07070",annotation_text="🔴 Critical")
+        fig.add_hline(y=1.0,line_color="#7BA2F1")
+        fig.add_annotation(x=1,xref="paper",y=1.0,text="Target SPI=1.0",showarrow=False,
+            font=dict(color="#7BA2F1",size=10),xanchor="right",yanchor="bottom")
+        fig.add_hline(y=0.95,line_dash="dot",line_color="#F4A25E")
+        fig.add_annotation(x=1,xref="paper",y=0.95,text="⚠️ Warning",showarrow=False,
+            font=dict(color="#F4A25E",size=10),xanchor="right",yanchor="bottom")
+        fig.add_hline(y=0.80,line_dash="dot",line_color="#F07070")
+        fig.add_annotation(x=1,xref="paper",y=0.80,text="🔴 Critical",showarrow=False,
+            font=dict(color="#F07070",size=10),xanchor="right",yanchor="bottom")
         fig.add_trace(go.Scatter(x=xs,y=ys,name="SPI",line=dict(color="#BDE0A9",width=3),
             mode="lines+markers",marker=dict(size=8,color=["#BDE0A9" if v>=1 else "#F4A25E" if v>=0.8 else "#F07070" for v in ys])))
         fig.update_layout(paper_bgcolor="#2D3747",plot_bgcolor="#1A2030",font=dict(color="#E8ECF0"),
