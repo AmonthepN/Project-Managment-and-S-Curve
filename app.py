@@ -184,23 +184,40 @@ DATA_FILE = "project_data.json"
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, encoding="utf-8") as f:
-            return json.load(f)
+            d = json.load(f)
+        # Ensure _db_key is always present after loading from disk
+        if not d.get("_db_key"):
+            raw = (d.get("project_name","project") + "_" + d.get("start_date","")[:7])
+            d["_db_key"]   = re.sub(r'[^A-Za-z0-9_]', '_', raw)[:40]
+            d["_db_doc"]   = d.get("_db_doc", "CUSTOM")
+            d["_db_phase"] = d.get("_db_phase", "Custom")
+            # Write key back so it persists
+            with open(DATA_FILE,"w",encoding="utf-8") as f:
+                json.dump(d,f,ensure_ascii=False,indent=2)
+        return d
     return {"project_name":"Demo Project","project_name_th":"โครงการตัวอย่าง",
             "contract_no":"SF-NRCT-FY2569","project_owner":"NRCT",
             "contractor":"Faculty of Engineering, CMU","start_date":"2025-10-01",
             "end_date":"2026-09-30","total_budget":8166000,"n_months":12,"activities":[]}
 
 def save_data(d):
+    # ── Auto-stamp _db_key if missing so EVERY save syncs to SQLite ──────────
+    if not d.get("_db_key"):
+        raw = (d.get("project_name","project") + "_" + d.get("start_date","")[:7])
+        d["_db_key"]   = re.sub(r'[^A-Za-z0-9_]', '_', raw)[:40]
+        d["_db_doc"]   = d.get("_db_doc", "CUSTOM")
+        d["_db_phase"] = d.get("_db_phase", "Custom")
+
     with open(DATA_FILE,"w",encoding="utf-8") as f: json.dump(d,f,ensure_ascii=False,indent=2)
     st.cache_data.clear()
-    # Auto-sync to SQLite if this project is tracked in the DB
-    _key = d.get("_db_key")
-    if _key:
-        n = len(d.get("activities",[]))
-        db_save(_key, d.get("project_name",""), d.get("project_name_th",""),
-                d.get("_db_doc","CUSTOM"), d.get("_db_phase","Custom"), d)
-        db_log(_key, d.get("project_name",""), "💾 Saved",
-               f"{n} activities | budget ฿{d.get('total_budget',0):,.0f}")
+
+    # Always sync to SQLite
+    _key = d["_db_key"]
+    n = len(d.get("activities",[]))
+    db_save(_key, d.get("project_name",""), d.get("project_name_th",""),
+            d.get("_db_doc","CUSTOM"), d.get("_db_phase","Custom"), d)
+    db_log(_key, d.get("project_name",""), "💾 Saved",
+           f"{n} activities | budget ฿{d.get('total_budget',0):,.0f}")
 
 @st.cache_data
 def get_labels(start_iso, n):
