@@ -1,208 +1,147 @@
-# WBS Extraction Prompt — S-Curve Project Manager
-## Version 1.1 | Faculty of Engineering, Chiang Mai University
+# WBS Extraction Prompt for S-Curve and HeyMorning Template
 
----
+You are a project controls planner. Extract a clean Work Breakdown Structure (WBS) from the provided project document text, tables, budgets, and schedules.
 
-## HOW TO USE THIS PROMPT
+## Goal
 
-1. Copy everything below the line `=== PASTE PROMPT BELOW ===`
-2. Open a new Claude / ChatGPT conversation
-3. Paste the prompt, then **attach your project proposal document** (Word / PDF)
-4. The AI will output a CSV table
-5. Save the CSV as `heymorning_task_import.csv`
-6. Upload to the S-Curve web app → **📥 Import WBS → Upload CSV** tab
+Create structured WBS rows that can be used for:
 
----
+1. S-curve planning.
+2. Project/task tracking.
+3. Import into the HeyMorning Project Task Manager template.
 
-## EXPECTED OUTPUT FORMAT
+## Source Data
 
-The AI must output a CSV with these exact columns:
+Use only the information provided in the project documents. Prefer explicit schedule tables, budget tables, milestones, activity tables, and work package descriptions.
 
-```
-PROJECT, PHASE, TASK NAME, DESCRIPTION, IMPORTANT, URGENT, STATUS, PRIORITY,
-ASSIGNED TO, START DATE, DUE DATE, KANBAN STAGE, PROGRESS, NOTES
-```
+If the document does not contain an explicit WBS, infer the WBS from:
 
-The `NOTES` column must contain pipe-separated metadata:
+- Project/subproject structure.
+- Work package labels such as `WP1`, `WP2`, `WP3`.
+- Activity schedule rows.
+- Milestone rows.
+- Budget/task descriptions.
 
-```
-WBS: FULL.1.01 | Document: FULL | FY(BE): 2569 | Months: 1,2,3 |
-Weight %: 10.0 | Estimated cost: 2072300.0 | Duration days: 92 | Source: table 19, row 2
-```
+## Required Output
 
----
+Return a table with these columns:
 
-=== PASTE PROMPT BELOW ===
-
-# ROLE
-
-You are a senior project controls engineer and WBS specialist.
-Your task is to read the attached project proposal document and extract a
-complete Work Breakdown Structure (WBS) that is ready for import into
-an S-Curve Project Management system.
-
----
-
-# OBJECTIVE
-
-Extract ALL activities, tasks, and work packages from the document.
-Output TWO things:
-
-1. **WBS Summary Table** — full structured breakdown
-2. **Import CSV** — ready to copy-paste or save as `heymorning_task_import.csv`
-
----
-
-# STEP 1 — IDENTIFY PROJECT STRUCTURE
-
-Before extracting, identify:
-
-- **Project name** (EN and TH if available)
-- **Document code(s)**: e.g. `FULL`, `CM`, `CR`, `LP`, `PY`
-  - If the document covers multiple provinces or sub-projects, assign each a code
-- **Fiscal year** (BE): e.g. 2569 (= 2026 CE)
-- **Total budget** (THB)
-- **Project duration** in months (usually 12)
-- **Start month**: fiscal month 1 = October of prior calendar year
-
-### Fiscal Month → Calendar Date Table
-
-| Fiscal Month | Calendar Month | Example (FY2569) |
-|---|---|---|
-| 1  | October   | 2025-10 |
-| 2  | November  | 2025-11 |
-| 3  | December  | 2025-12 |
-| 4  | January   | 2026-01 |
-| 5  | February  | 2026-02 |
-| 6  | March     | 2026-03 |
-| 7  | April     | 2026-04 |
-| 8  | May       | 2026-05 |
-| 9  | June      | 2026-06 |
-| 10 | July      | 2026-07 |
-| 11 | August    | 2026-08 |
-| 12 | September | 2026-09 |
-
----
-
-# STEP 2 — EXTRACT WBS ACTIVITIES
-
-Scan the document for:
-
-- **Schedule tables** (rows = activities, columns = months with ✓ or shading)
-- **Budget breakdown tables** (rows = activities with cost or % columns)
-- **Work package lists** (WP1, WP2, milestone rows)
-- **Gantt chart** descriptions
-
-For each activity extract:
-
-| Field | Rule |
+| Column | Description |
 |---|---|
-| **WBS Code** | Format: `[DOC].[TABLE].[SEQ]` e.g. `FULL.1.01`, `CM.2.03` |
-| **Document Code** | `FULL`, `CM`, `CR`, `LP`, `PY`, or custom |
-| **Phase / Table** | `[DOC] / Table [N]` or `[DOC] / WP[N]` |
-| **Activity Name** | Exact Thai or English name from document |
-| **Active Months** | List of fiscal month numbers where the activity is active, e.g. `1,2,3` |
-| **Start Date** | First day of first active month (`yyyy-mm-dd`) |
-| **Finish Date** | Last day of last active month (`yyyy-mm-dd`) |
-| **Duration Days** | Calendar days from start to finish inclusive |
-| **Weight %** | Percentage weight of activity within its phase/table (sum = 100% per table) |
-| **Estimated Cost** | `Total Budget × Weight %`. If explicit cost given, use that |
-| **Source Evidence** | File name + table number + row number |
+| `WBS` | Hierarchical WBS code, e.g. `1.0`, `1.1`, `CM.1.01`, `FULL.2.03` |
+| `Document Code` | Source grouping, e.g. `FULL`, `CM`, `CR`, `LP`, `PY` |
+| `Activity / Work Package` | Short task or work package name |
+| `Description` | Brief description of scope |
+| `Start Date` | Planned start date in `yyyy-mm-dd` |
+| `Finish Date` | Planned finish date in `yyyy-mm-dd` |
+| `Duration Days` | Inclusive duration in days |
+| `Planned Hours` | Labor hours if available; blank if not stated |
+| `Planned Cost` | Cost if directly stated, or estimated from budget x activity weight |
+| `Weight %` | Activity percentage or calculated planning weight |
+| `Weight Basis` | One of `Cost`, `Hours`, `Both`, `Manual` |
+| `Status` | Default to `Not Started` unless stated otherwise |
+| `Source Evidence` | File/table/section reference supporting the row |
+| `Assumptions` | Any assumptions used for dates, cost, hours, or weights |
 
----
+## Date Rules
 
-# STEP 3 — APPLY THESE RULES
+If the document uses fiscal year month columns `1` to `12`, interpret them as:
 
-### Weight Rules
-- If the document has explicit % weights per activity → use them directly
-- If no weights: estimate as `1 / total_activities × 100`
-- Weights within each source table must sum to **100%**
-
-### Cost Rules
-- If explicit line-item cost → use it
-- Else: `Estimated Cost = Total Budget × (Weight % / 100)`
-- Always add to Assumptions: *"Estimated from project budget × activity weight %"*
-
-### Priority Rules
-| Condition | Priority |
+| Fiscal Month | Calendar Month |
 |---|---|
-| Weight ≥ 15% OR Cost ≥ 3,000,000 THB | `High` |
-| Weight ≥ 8% OR Cost ≥ 1,000,000 THB | `Medium` |
-| Otherwise | `Low` |
+| 1 | October of prior calendar year |
+| 2 | November of prior calendar year |
+| 3 | December of prior calendar year |
+| 4 | January |
+| 5 | February |
+| 6 | March |
+| 7 | April |
+| 8 | May |
+| 9 | June |
+| 10 | July |
+| 11 | August |
+| 12 | September |
 
-### Status Rules
-- Default: `Not Started`
-- Override if document explicitly states otherwise
+For example, fiscal year `2569`, month `1` means `2025-10`, and month `12` means `2026-09`.
 
-### Validation Checklist
-Before outputting, verify:
-- [ ] Every row has WBS, task name, start date, finish date, weight %, source
-- [ ] Start date ≤ finish date
-- [ ] All dates use `yyyy-mm-dd` format
-- [ ] WBS codes are unique across the entire document
-- [ ] Weights per table sum to 100%
-- [ ] No formula column N is referenced (skip it)
+Use the first active month as the start month and the last active month as the finish month. Use the first day of the start month and the last day of the finish month.
 
----
+## Cost Rules
 
-# STEP 4 — OUTPUT FORMAT
+Use explicit activity-level cost if available.
 
-## Part A: WBS Summary Table
+If only total project budget and activity percentage are available:
 
-Output a markdown table with columns:
-`WBS | Document | Phase | Activity Name | Start Date | Finish Date | Duration Days | Weight % | Estimated Cost | Priority | Source`
-
-## Part B: Import CSV
-
-Output a code block labeled ```csv with this EXACT header row and one data row per activity:
-
-```
-PROJECT,PHASE,TASK NAME,DESCRIPTION,IMPORTANT,URGENT,STATUS,PRIORITY,ASSIGNED TO,START DATE,DUE DATE,KANBAN STAGE,PROGRESS,NOTES
+```text
+Planned Cost = Total Project Budget x Activity Weight %
 ```
 
-Rules for each column:
-- `PROJECT`: Use project name (EN). Same value for all rows in the same document
-- `PHASE`: Format exactly as `[DOC] / Table [N]` e.g. `FULL / Table 19`
-- `TASK NAME`: Activity name (Thai or EN from document)
-- `DESCRIPTION`: `[source_file] | table [N], row [R]`
-- `IMPORTANT`: `false`
-- `URGENT`: `false`
-- `STATUS`: `Not Started`
-- `PRIORITY`: `High`, `Medium`, or `Low` (see rules above)
-- `ASSIGNED TO`: `AI Planner`
-- `START DATE`: `yyyy-mm-dd`
-- `DUE DATE`: `yyyy-mm-dd`
-- `KANBAN STAGE`: `Backlog`
-- `PROGRESS`: `0`
-- `NOTES`: Exactly this format (pipe-separated, no line breaks):
+Mark this in `Assumptions`:
 
-```
-WBS: [code] | Document: [DOC] | FY(BE): [year] | Months: [1,2,3] | Weight %: [n.n] | Estimated cost: [nnnn.n] | Duration days: [n] | Source: [file | table N, row R] | [assumption text if any]
+```text
+Estimated from project budget x activity percentage; source table does not provide line-item activity cost.
 ```
 
-## Part C: Assumptions
+## Hours Rules
 
-List all assumptions made during extraction.
+Use explicit labor hours if available.
 
-## Part D: Missing Information
+If labor hours are not stated, leave `Planned Hours` blank. Do not invent hours unless specifically asked to estimate them.
 
-List any fields that could not be determined from the document.
+## HeyMorning Template Mapping
 
-## Part E: Validation Summary
+Also provide a second table called `HeyMorning Import` with these columns:
 
-Confirm: total rows extracted, date range, weight sum per table.
+| HeyMorning Column | Source |
+|---|---|
+| `PROJECT` | Project name |
+| `PHASE` | `Document Code / Table or Work Package` |
+| `TASK NAME` | `Activity / Work Package` |
+| `DESCRIPTION` | Source evidence or short scope |
+| `IMPORTANT` | `FALSE` |
+| `URGENT` | `FALSE` |
+| `STATUS` | `Not Started` unless stated otherwise |
+| `PRIORITY` | `High`, `Medium`, or `Low` based on weight/cost |
+| `ASSIGNED TO` | `AI Planner` unless owner is stated |
+| `START DATE` | `Start Date` |
+| `DUE DATE` | `Finish Date` |
+| `KANBAN STAGE` | `Backlog` unless status suggests otherwise |
+| `PROGRESS` | `0` unless status suggests otherwise |
+| `NOTES` | Include WBS, weight, cost, duration, and source evidence |
 
----
+Priority rules:
 
-# IMPORTANT NOTES
+- `High` if `Weight % >= 15` or `Planned Cost >= 3,000,000`.
+- `Medium` if `Weight % >= 8` or `Planned Cost >= 1,000,000`.
+- Otherwise `Low`.
 
-- Do NOT invent activities not in the document
-- Do NOT skip any activity row in a schedule or budget table
-- If multiple sub-projects or provinces exist in ONE document, give each its own Document Code and separate rows
-- The NOTES column is critical — the import script reads `Months:`, `Weight %:`, `WBS:`, and `Estimated cost:` from it
-- Keep commas out of activity names (use semicolons if needed in Thai text)
-- Wrap fields containing commas in double quotes in the CSV
+Progress rules:
 
-Now read the attached document and extract the complete WBS.
+- `Completed` = `1`
+- `In Progress` = `0.35`
+- Otherwise `0`
 
-=== END OF PROMPT ===
+## Validation Rules
+
+Before finalizing, check:
+
+- Every row has WBS, task name, start date, finish date, status, and source evidence.
+- Start date is not after finish date.
+- Dates use `yyyy-mm-dd`.
+- WBS codes are unique.
+- Status values are valid: `Not Started`, `In Progress`, `Completed`, `On Hold`, `Cancelled`, `Pending`.
+- Priority values are valid: `High`, `Medium`, `Low`.
+- Weight and cost assumptions are clearly labeled.
+- Do not overwrite or populate HeyMorning formula column `N`; only prepare columns `C:M` and `O:Q`.
+
+## Final Response Format
+
+Return:
+
+1. `WBS Activities` table.
+2. `HeyMorning Import` table.
+3. `Assumptions`.
+4. `Missing Information`.
+5. `Validation Summary`.
+
+Keep the output structured and ready to export to CSV or Excel.
