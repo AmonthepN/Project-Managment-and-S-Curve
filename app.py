@@ -3,7 +3,7 @@ S-Curve Project Monitoring System — Streamlit Web App
 Author: Faculty of Engineering, Chiang Mai University
 Run:  streamlit run app.py
 """
-import json, os, re, io, csv
+import json, os, re, io, csv, sqlite3
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import streamlit as st
@@ -33,6 +33,113 @@ st.markdown("""
 div[data-testid="stMetricValue"]{color:#7BA2F1!important;font-size:1.8rem!important}
 div[data-testid="stMetricLabel"]{color:#9BA3AF!important}
 </style>""", unsafe_allow_html=True)
+
+# ── Project Database (SQLite) ─────────────────────────────────────────────────
+DB_FILE = "projects.db"
+
+def db_connect():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def db_init():
+    """Create table and migrate from manifest JSON if needed."""
+    conn = db_connect()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            key         TEXT    UNIQUE,
+            project_name     TEXT,
+            project_name_th  TEXT,
+            doc         TEXT,
+            phase       TEXT,
+            n_activities     INTEGER DEFAULT 0,
+            total_budget     REAL    DEFAULT 0,
+            data_json   TEXT,
+            created_at  TEXT,
+            updated_at  TEXT
+        )
+    """)
+    conn.commit()
+    # Migrate from project_manifest.json + JSON files if DB is empty
+    if conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
+        mf = "projects/project_manifest.json"
+        if os.path.exists(mf):
+            with open(mf, encoding="utf-8") as f:
+                manifest = json.load(f)
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for e in manifest:
+                fpath = os.path.join("projects", e["filename"])
+                d_json = ""
+                if os.path.exists(fpath):
+                    with open(fpath, encoding="utf-8") as pf:
+                        d_json = pf.read()
+                try:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO projects
+                        (key,project_name,project_name_th,doc,phase,n_activities,total_budget,data_json,created_at,updated_at)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                    """, (e["key"], e["project_name"], e.get("project_name_th",""),
+                          e["doc"], e.get("phase",""), e["n_activities"],
+                          e.get("total_budget",0), d_json, now, now))
+                except Exception:
+                    pass
+            conn.commit()
+    conn.close()
+
+def db_list(sort="updated_at", search=""):
+    """Return all projects sorted by updated_at DESC."""
+    conn = db_connect()
+    q = "SELECT id,key,project_name,project_name_th,doc,phase,n_activities,total_budget,created_at,updated_at FROM projects"
+    params = []
+    if search:
+        q += " WHERE project_name LIKE ? OR doc LIKE ? OR phase LIKE ?"
+        params = [f"%{search}%"]*3
+    q += f" ORDER BY {sort} DESC"
+    rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    conn.close()
+    return rows
+
+def db_get(key):
+    conn = db_connect()
+    r = conn.execute("SELECT data_json FROM projects WHERE key=?", (key,)).fetchone()
+    conn.close()
+    return json.loads(r["data_json"]) if r and r["data_json"] else None
+
+def db_save(key, project_name, project_name_th, doc, phase, proj_data):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    n = len(proj_data.get("activities", []))
+    b = proj_data.get("total_budget", 0)
+    j = json.dumps(proj_data, ensure_ascii=False)
+    conn = db_connect()
+    conn.execute("""
+        INSERT INTO projects (key,project_name,project_name_th,doc,phase,n_activities,total_budget,data_json,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(key) DO UPDATE SET
+            project_name=excluded.project_name,
+            project_name_th=excluded.project_name_th,
+            doc=excluded.doc, phase=excluded.phase,
+            n_activities=excluded.n_activities,
+            total_budget=excluded.total_budget,
+            data_json=excluded.data_json,
+            updated_at=excluded.updated_at
+    """, (key, project_name, project_name_th, doc, phase, n, b, j, now, now))
+    conn.commit()
+    conn.close()
+
+def db_touch(key):
+    """Update updated_at timestamp (on Load)."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = db_connect()
+    conn.execute("UPDATE projects SET updated_at=? WHERE key=?", (now, key))
+    conn.commit(); conn.close()
+
+def db_delete(key):
+    conn = db_connect()
+    conn.execute("DELETE FROM projects WHERE key=?", (key,))
+    conn.commit(); conn.close()
+
+db_init()   # run once on startup
 
 # ── Data ─────────────────────────────────────────────────────────────────────
 DATA_FILE = "project_data.json"
@@ -391,94 +498,76 @@ elif page=="📥 Import WBS":
     tab1, tab2, tab3 = st.tabs(["📚 Project Library", "📄 Upload CSV", "✏️ Manage Activities"])
 
     with tab1:
-        st.markdown("### Pre-built Project Library")
-        st.markdown("**▶ Load** — switch active project &nbsp;|&nbsp; **🗑️ Remove** — delete from library")
+        st.markdown("### 📚 Project Library")
 
-        def save_manifest(m):
-            with open(MANIFEST_PATH, "w", encoding="utf-8") as _mf:
-                json.dump(m, _mf, ensure_ascii=False, indent=2)
+        # ── Search + Sort controls ────────────────────────────────────────────
+        hc1, hc2, hc3 = st.columns([3, 2, 1])
+        search_q  = hc1.text_input("🔍 Search", placeholder="project name, doc code…", label_visibility="collapsed")
+        sort_by   = hc2.selectbox("Sort by", ["updated_at","created_at","project_name","n_activities"],
+                                   format_func=lambda x: {"updated_at":"Last Modified","created_at":"Date Added",
+                                                           "project_name":"Name","n_activities":"No. Tasks"}[x],
+                                   label_visibility="collapsed")
+        doc_icons = {"FULL":"🌐","CM":"🏔️","CR":"🌾","LP":"🌿","PY":"💧"}
 
-        if os.path.exists(MANIFEST_PATH):
-            with open(MANIFEST_PATH, encoding="utf-8") as _f:
-                manifest = json.load(_f)
+        entries = db_list(sort=sort_by, search=search_q)
 
-            from collections import OrderedDict as OD
-            by_doc = OD()
-            for m in manifest:
-                by_doc.setdefault(m["doc"], []).append(m)
+        if not entries:
+            st.info("No projects in library yet. Use **➕ Add Current Project** below or run `wbs_extractor.py`.")
+        else:
+            hc3.markdown(f"<div style='text-align:right;padding-top:8px;color:#9BA3AF'>{len(entries)} projects</div>",
+                         unsafe_allow_html=True)
+            st.markdown("---")
 
-            doc_icons = {"FULL":"🌐","CM":"🏔️","CR":"🌾","LP":"🌿","PY":"💧"}
-            for doc, entries in by_doc.items():
-                st.markdown(f"#### {doc_icons.get(doc,'📁')} {doc} — {len(entries)} sub-projects")
-                for e in entries:
-                    col_name, col_acts, col_bud, col_load, col_del = st.columns([4,1,2,1,1])
-                    col_name.markdown(f"**{e['project_name']}**  \n<small>{e['phase']}</small>",
-                                      unsafe_allow_html=True)
-                    col_acts.metric("Tasks", e["n_activities"])
-                    col_bud.metric("Budget", "THB {:,.0f}".format(e["total_budget"]) if e["total_budget"] else "—")
-                    fpath = os.path.join(PROJECTS_DIR, e["filename"])
+            for e in entries:
+                icon = doc_icons.get(e["doc"],"📁")
+                upd  = e["updated_at"][:16] if e["updated_at"] else "—"
+                cre  = e["created_at"][:16] if e["created_at"] else "—"
 
-                    # Load button
-                    if col_load.button("▶ Load", key=f"lib_{e['key']}"):
-                        if os.path.exists(fpath):
-                            with open(fpath, encoding="utf-8") as _pf:
-                                new_proj = json.load(_pf)
-                            save_data(new_proj)
-                            st.success(f"✅ Loaded: **{e['project_name']}** ({e['n_activities']} activities)")
-                            st.rerun()
-                        else:
-                            st.error(f"File not found: {fpath}")
+                c_info, c_acts, c_bud, c_upd, c_load, c_del = st.columns([4, 1, 2, 2, 1, 1])
+                c_info.markdown(
+                    f"{icon} **{e['project_name']}**  \n"
+                    f"<small style='color:#9BA3AF'>{e['doc']} / {e['phase']}</small>",
+                    unsafe_allow_html=True)
+                c_acts.metric("Tasks", e["n_activities"])
+                c_bud.metric("Budget", "฿{:,.0f}".format(e["total_budget"]) if e["total_budget"] else "—")
+                c_upd.markdown(
+                    f"<div style='font-size:.78rem;color:#9BA3AF;padding-top:6px'>"
+                    f"✏️ {upd}<br>➕ {cre}</div>",
+                    unsafe_allow_html=True)
 
-                    # Delete button — removes from manifest (and JSON file if exists)
-                    if col_del.button("🗑️", key=f"del_{e['key']}", help=f"Remove '{e['project_name']}' from library"):
-                        new_manifest = [m for m in manifest if m["key"] != e["key"]]
-                        save_manifest(new_manifest)
-                        if os.path.exists(fpath):
-                            os.remove(fpath)
-                        st.success(f"🗑️ Removed **{e['project_name']}** from library.")
+                if c_load.button("▶ Load", key=f"db_load_{e['key']}"):
+                    proj = db_get(e["key"])
+                    if proj:
+                        save_data(proj)
+                        db_touch(e["key"])
+                        st.success(f"✅ Loaded **{e['project_name']}** ({e['n_activities']} tasks)")
                         st.rerun()
+                    else:
+                        st.error("Project data not found in database.")
 
-                st.markdown("---")
-
-            # ── Save current project to library ──────────────────────────────
-            st.markdown("#### ➕ Add Current Project to Library")
-            with st.form("save_to_lib"):
-                c1, c2, c3 = st.columns(3)
-                lib_name = c1.text_input("Library Name", data["project_name"])
-                lib_doc  = c2.text_input("Document Code", "CUSTOM")
-                lib_phase= c3.text_input("Phase / Tag", "Custom")
-                if st.form_submit_button("💾 Save to Library", use_container_width=True):
-                    import re as _re
-                    safe_key = _re.sub(r'[^A-Za-z0-9_]', '_', f"{lib_doc}_{lib_phase}")[:40]
-                    lib_filename = f"project_{safe_key}.json"
-                    lib_fpath = os.path.join(PROJECTS_DIR, lib_filename)
-                    os.makedirs(PROJECTS_DIR, exist_ok=True)
-                    # Write the project JSON
-                    lib_data = dict(data)
-                    lib_data["project_name"] = lib_name
-                    with open(lib_fpath, "w", encoding="utf-8") as _lf:
-                        json.dump(lib_data, _lf, ensure_ascii=False, indent=2)
-                    # Append to manifest
-                    with open(MANIFEST_PATH, encoding="utf-8") as _mf2:
-                        cur_manifest = json.load(_mf2)
-                    # Remove existing entry with same key if any
-                    cur_manifest = [m for m in cur_manifest if m["key"] != safe_key]
-                    cur_manifest.append({
-                        "key": safe_key,
-                        "filename": lib_filename,
-                        "project_name": lib_name,
-                        "doc": lib_doc,
-                        "phase": lib_phase,
-                        "n_activities": len(data["activities"]),
-                        "total_budget": data.get("total_budget", 0),
-                    })
-                    save_manifest(cur_manifest)
-                    st.success(f"✅ Saved **{lib_name}** to library as `{lib_filename}`")
+                if c_del.button("🗑️", key=f"db_del_{e['key']}", help=f"Delete '{e['project_name']}'"):
+                    db_delete(e["key"])
+                    st.success(f"🗑️ Deleted **{e['project_name']}**")
                     st.rerun()
 
-        else:
-            st.warning("No project library found. Run `wbs_extractor.py` to generate pre-built project files, or use the **Upload CSV** tab.")
-            st.code("python wbs_extractor.py --csv heymorning_task_import.csv --outdir projects --combine-doc")
+                st.markdown("<hr style='margin:6px 0;border-color:#3D4557'>", unsafe_allow_html=True)
+
+        # ── Save current project to DB ────────────────────────────────────────
+        st.markdown("#### ➕ Add Current Project to Library")
+        with st.form("save_to_db"):
+            c1, c2, c3 = st.columns(3)
+            lib_name  = c1.text_input("Project Name", data["project_name"])
+            lib_doc   = c2.text_input("Document Code", "CUSTOM")
+            lib_phase = c3.text_input("Phase / Tag", "Custom")
+            lib_name_th = st.text_input("Project Name (TH)", data.get("project_name_th",""))
+            if st.form_submit_button("💾 Save to Library", use_container_width=True):
+                safe_key = re.sub(r'[^A-Za-z0-9_]', '_', f"{lib_doc}_{lib_phase}")[:40]
+                save_proj = dict(data)
+                save_proj["project_name"]    = lib_name
+                save_proj["project_name_th"] = lib_name_th
+                db_save(safe_key, lib_name, lib_name_th, lib_doc, lib_phase, save_proj)
+                st.success(f"✅ Saved **{lib_name}** to database")
+                st.rerun()
 
     with tab2:
         st.markdown("### Upload WBS CSV")
