@@ -327,11 +327,48 @@ if page=="🏠 Dashboard":
     with cr:
         st.markdown('<div class="sec">A C T I V I T I E S</div>',unsafe_allow_html=True)
         for a in acts:
-            st_raw=a.get("status","Not Started")
-            sk=next((k for k in SCLS if k in st_raw),"Not Started")
-            st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #3D4557">'
-                f'<span style="color:#E8ECF0;font-size:.82rem">{a["no"]}. {a["name"][:35]}…</span>'
-                f'<span class="{SCLS[sk]}">{sk}</span></div>',unsafe_allow_html=True)
+            st_raw = a.get("status","Not Started")
+            sk = next((k for k in SCLS if k in st_raw),"Not Started")
+            is_active = a["start_month"] <= cm <= a["end_month"]
+            # Highlight border for currently active activities
+            border_style = "border-left:3px solid #F4A25E;padding-left:6px;" if is_active else "border-left:3px solid #3D4557;padding-left:6px;"
+            active_dot = '<span style="color:#F4A25E;font-size:.7rem;margin-right:3px">●</span>' if is_active else ''
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                f'padding:5px 0;border-bottom:1px solid #3D4557;{border_style}">'
+                f'<span style="color:#E8ECF0;font-size:.82rem">{active_dot}{a["no"]}. {a["name"][:32]}…</span>'
+                f'<span class="{SCLS[sk]}">{sk}</span></div>',
+                unsafe_allow_html=True)
+
+    # ── ACTIVE THIS MONTH spotlight ───────────────────────────────────────────
+    active_acts = [a for a in acts if a["start_month"] <= cm <= a["end_month"]]
+    if active_acts:
+        st.markdown(f'<div class="sec">⏰ A C T I V E &nbsp; T H I S &nbsp; M O N T H &nbsp;— M{cm} &nbsp;({labels[cm-1] if cm<=N else ""})</div>',
+                    unsafe_allow_html=True)
+        cols_h = st.columns(min(len(active_acts), 3))
+        for idx, a in enumerate(active_acts):
+            st_raw = a.get("status","Not Started")
+            sk = next((k for k in SCLS if k in st_raw),"Not Started")
+            actual_cm = float(a.get("actuals",{}).get(str(cm), 0))
+            # Health color
+            if "Completed" in st_raw:    hcol, hlbl = "#2A5E3A", "✅ Done"
+            elif "Delayed" in st_raw:    hcol, hlbl = "#5A3A00", "⚠️ Delayed"
+            elif actual_cm > 0:          hcol, hlbl = "#1A3A5A", "🚧 Active"
+            else:                        hcol, hlbl = "#3A2A00", "⏳ Needs Input"
+            col = cols_h[idx % 3]
+            col.markdown(f"""
+<div style="background:{hcol};border:1px solid #F4A25E;border-radius:10px;padding:12px 14px;margin:4px 0">
+  <div style="color:#F4A25E;font-size:.72rem;font-weight:700;letter-spacing:1px">{a['no']} &nbsp;·&nbsp; Wt {a['weight']}%</div>
+  <div style="color:#E8ECF0;font-size:.88rem;font-weight:600;margin:4px 0">{a['name'][:50]}</div>
+  <div style="display:flex;justify-content:space-between;margin-top:6px">
+    <span style="color:#9BA3AF;font-size:.78rem">M{a['start_month']}→M{a['end_month']}</span>
+    <span style="color:#BDE0A9;font-size:.78rem;font-weight:600">{hlbl}</span>
+  </div>
+  <div style="background:#1A2030;border-radius:4px;height:6px;margin-top:6px">
+    <div style="background:#F4A25E;height:6px;border-radius:4px;width:{min(actual_cm,100):.0f}%"></div>
+  </div>
+  <div style="color:#9BA3AF;font-size:.72rem;margin-top:2px">M{cm} actual: {actual_cm:.0f}%</div>
+</div>""", unsafe_allow_html=True)
 
     st.markdown("---")
     p1,p2,p3,p4=st.columns(4)
