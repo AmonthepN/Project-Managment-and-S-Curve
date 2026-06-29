@@ -262,6 +262,14 @@ with st.sidebar:
     st.markdown(f"**📅 Current Month:** M{cm}")
     st.markdown(f"**🗓️ Today:** {date.today().strftime('%d %b %Y')}")
     st.markdown("---")
+    # Active project indicator in sidebar
+    _akey = data.get("_db_key","")
+    _aname = data.get("project_name","—")
+    st.markdown(
+        f"<div style='background:#1A3A2A;border-radius:6px;padding:7px 10px;margin-bottom:4px'>"
+        f"<div style='color:#BDE0A9;font-size:.7rem;font-weight:700;letter-spacing:1px'>▶ ACTIVE PROJECT</div>"
+        f"<div style='color:#E8ECF0;font-size:.8rem;margin-top:3px'>{_aname[:38]}</div>"
+        f"</div>", unsafe_allow_html=True)
     st.caption("Ping River Basin • Chiang Mai University © 2026")
 
 data=load_data()
@@ -609,22 +617,44 @@ elif page=="📥 Import WBS":
         doc_icons = {"FULL":"🌐","CM":"🏔️","CR":"🌾","LP":"🌿","PY":"💧"}
 
         entries = db_list(sort=sort_by, search=search_q)
+        active_key = data.get("_db_key","")   # currently loaded project key
 
         if not entries:
             st.info("No projects in library yet. Use **➕ Add Current Project** below or run `wbs_extractor.py`.")
         else:
             hc3.markdown(f"<div style='text-align:right;padding-top:8px;color:#9BA3AF'>{len(entries)} projects</div>",
                          unsafe_allow_html=True)
+
+            # Active project banner
+            active_entry = next((e for e in entries if e["key"] == active_key), None)
+            if active_entry:
+                st.markdown(
+                    f"<div style='background:#1A3A2A;border:1px solid #BDE0A9;border-radius:8px;"
+                    f"padding:8px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px'>"
+                    f"<span style='color:#BDE0A9;font-size:1rem'>▶ Active:</span>"
+                    f"<span style='color:#E8ECF0;font-weight:600'>{active_entry['project_name']}</span>"
+                    f"<span style='color:#9BA3AF;font-size:.8rem'>({active_entry['doc']} / {active_entry['phase']} · "
+                    f"{active_entry['n_activities']} tasks)</span></div>",
+                    unsafe_allow_html=True)
+
             st.markdown("---")
 
             for e in entries:
-                icon = doc_icons.get(e["doc"],"📁")
-                upd  = e["updated_at"][:16] if e["updated_at"] else "—"
-                cre  = e["created_at"][:16] if e["created_at"] else "—"
+                icon     = doc_icons.get(e["doc"],"📁")
+                upd      = e["updated_at"][:16] if e["updated_at"] else "—"
+                cre      = e["created_at"][:16] if e["created_at"] else "—"
+                is_active = e["key"] == active_key
+
+                # Row highlight for active project
+                row_bg  = "background:#1A3A2A;border:1px solid #BDE0A9;border-radius:8px;padding:4px 8px;margin-bottom:2px" if is_active else ""
+                active_badge = "&nbsp;<span style='background:#BDE0A9;color:#1A2030;font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:10px'>● IN USE</span>" if is_active else ""
+
+                if row_bg:
+                    st.markdown(f"<div style='{row_bg}'>", unsafe_allow_html=True)
 
                 c_info, c_acts, c_bud, c_upd, c_load, c_del = st.columns([4, 1, 2, 2, 1, 1])
                 c_info.markdown(
-                    f"{icon} **{e['project_name']}**  \n"
+                    f"{icon} **{e['project_name']}**{active_badge}  \n"
                     f"<small style='color:#9BA3AF'>{e['doc']} / {e['phase']}</small>",
                     unsafe_allow_html=True)
                 c_acts.metric("Tasks", e["n_activities"])
@@ -634,7 +664,13 @@ elif page=="📥 Import WBS":
                     f"✏️ {upd}<br>➕ {cre}</div>",
                     unsafe_allow_html=True)
 
-                if c_load.button("▶ Load", key=f"db_load_{e['key']}"):
+                if row_bg:
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+                if c_load.button("✅ Active" if is_active else "▶ Load",
+                                  key=f"db_load_{e['key']}",
+                                  disabled=is_active,
+                                  type="primary" if is_active else "secondary"):
                     proj = db_get(e["key"])
                     if proj:
                         # Stamp DB tracking keys so every subsequent save_data() syncs back
