@@ -692,6 +692,68 @@ elif page=="📥 Import WBS":
 
                 st.markdown("<hr style='margin:6px 0;border-color:#3D4557'>", unsafe_allow_html=True)
 
+        # ── Bulk Import all WBS JSON files ───────────────────────────────────
+        st.markdown("---")
+        st.markdown("#### 📦 Import All WBS Extract Files")
+        st.markdown("Scan the `projects/` folder and add every JSON file into the database in one click.")
+
+        imp_col1, imp_col2 = st.columns([3, 1])
+
+        # Count importable files
+        json_files = []
+        if os.path.exists(PROJECTS_DIR):
+            json_files = [f for f in os.listdir(PROJECTS_DIR)
+                          if f.endswith(".json") and f != "project_manifest.json"]
+
+        imp_col1.markdown(
+            f"<div style='padding:8px 0;color:#9BA3AF;font-size:.88rem'>"
+            f"Found <b style='color:#E8ECF0'>{len(json_files)}</b> JSON files in "
+            f"<code>projects/</code> · "
+            f"<b style='color:#E8ECF0'>{len(db_list())}</b> already in database</div>",
+            unsafe_allow_html=True)
+
+        if imp_col2.button("📦 Import All", use_container_width=True, type="primary",
+                           disabled=(len(json_files)==0)):
+            imported = skipped = errors = 0
+            existing_keys = {e["key"] for e in db_list()}
+
+            # Try manifest first for metadata
+            manifest_map = {}
+            if os.path.exists(MANIFEST_PATH):
+                with open(MANIFEST_PATH, encoding="utf-8") as _mf:
+                    for m in json.load(_mf):
+                        manifest_map[m.get("filename","")] = m
+
+            for fname in json_files:
+                fpath = os.path.join(PROJECTS_DIR, fname)
+                try:
+                    with open(fpath, encoding="utf-8") as _pf:
+                        proj = json.load(_pf)
+
+                    # Derive key & metadata from manifest or filename
+                    meta  = manifest_map.get(fname, {})
+                    raw_key = meta.get("key") or re.sub(r'[^A-Za-z0-9_]','_', fname.replace(".json",""))[:40]
+                    pname  = meta.get("project_name") or proj.get("project_name", fname)
+                    pnameth= meta.get("project_name_th","") or proj.get("project_name_th","")
+                    doc    = meta.get("doc") or proj.get("_db_doc","CUSTOM")
+                    phase  = meta.get("phase") or proj.get("_db_phase","Custom")
+
+                    # Stamp tracking keys into the JSON so future loads auto-sync
+                    proj["_db_key"]   = raw_key
+                    proj["_db_doc"]   = doc
+                    proj["_db_phase"] = phase
+
+                    db_save(raw_key, pname, pnameth, doc, phase, proj)
+                    action = "re-imported" if raw_key in existing_keys else "imported"
+                    db_log(raw_key, pname, "📦 Bulk Import", f"{fname} — {action}")
+                    imported += 1
+                except Exception as ex:
+                    errors += 1
+
+            st.success(f"✅ Imported **{imported}** projects | ⚠️ Errors: {errors}")
+            st.rerun()
+
+        st.markdown("---")
         # ── Save current project to DB ────────────────────────────────────────
         st.markdown("#### ➕ Add Current Project to Library")
         with st.form("save_to_db"):
