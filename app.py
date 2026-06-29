@@ -277,32 +277,45 @@ elif page=="📊 EVM Indicators":
 
 # ── UPDATE PROGRESS ───────────────────────────────────────────────────────────
 elif page=="📝 Update Progress":
-    st.markdown("# 📝 Update Monthly Progress")
-    st.markdown("Select an activity, enter actual % per month, and save.")
+    st.markdown("# 📝 Update Progress")
+    st.markdown("Edit status and monthly actuals for all activities, then click **Save All**.")
     st.markdown("---")
     if not acts: st.info("Add activities first in ⚙️ Setup."); st.stop()
-    sel=st.selectbox("Select Activity",[f"{a['no']}. {a['name']}" for a in acts])
-    idx=next(i for i,a in enumerate(acts) if f"{a['no']}. {a['name']}"==sel)
-    a=acts[idx]
-    st.markdown(f"**Weight:** {a['weight']}%  |  **Months:** M{a['start_month']} → M{a['end_month']}")
+
     sopts=["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
-    sk=next((k for k in sopts if k in a.get("status","")),sopts[0])
-    new_st=st.selectbox("Status",sopts,index=sopts.index(sk))
-    st.markdown("**Monthly Actual Progress (%)** — for this activity only:")
-    actuals=a.get("actuals",{}); new_actuals={}
-    months_act=list(range(a["start_month"],a["end_month"]+1))
-    for i in range(0,len(months_act),4):
-        chunk=months_act[i:i+4]; cols=st.columns(len(chunk))
-        for col,m in zip(cols,chunk):
-            lbl=(datetime.strptime(SI,"%Y-%m-%d")+relativedelta(months=m-1)).strftime("%b %Y")
-            new_actuals[str(m)]=col.number_input(f"M{m} ({lbl})",0.0,100.0,
-                float(actuals.get(str(m),0)),5.0,key=f"a{idx}m{m}")
-    st.markdown("")
-    if st.button("💾 Save Progress"):
-        data["activities"][idx]["actuals"]=new_actuals
-        data["activities"][idx]["status"]=SMAP.get(new_st,new_st)
+    new_data=[]  # collect all edits
+
+    for idx,a in enumerate(acts):
+        actuals=a.get("actuals",{})
+        sk=next((k for k in sopts if k in a.get("status","")),sopts[0])
+        months_act=list(range(a["start_month"],a["end_month"]+1))
+
+        with st.expander(f"**{a['no']}. {a['name']}**  —  Weight: {a['weight']}%  |  M{a['start_month']}→M{a['end_month']}  |  Status: {sk}",
+                         expanded=(idx==0)):
+            c_stat, c_sp = st.columns([2,3])
+            new_st=c_stat.selectbox("Status",sopts,index=sopts.index(sk),key=f"st{idx}")
+            c_sp.markdown("")
+
+            # Month inputs in rows of 6
+            new_actuals={}
+            for i in range(0,len(months_act),6):
+                chunk=months_act[i:i+6]
+                cols=st.columns(len(chunk))
+                for col,m in zip(cols,chunk):
+                    lbl=(datetime.strptime(SI,"%Y-%m-%d")+relativedelta(months=m-1)).strftime("%b %y")
+                    new_actuals[str(m)]=col.number_input(
+                        lbl, 0.0, 100.0, float(actuals.get(str(m),0)), 5.0,
+                        key=f"a{idx}m{m}")
+
+            new_data.append((idx, new_st, new_actuals))
+
+    st.markdown("---")
+    if st.button("💾 Save All Activities", use_container_width=True):
+        for idx, new_st, new_actuals in new_data:
+            data["activities"][idx]["actuals"]=new_actuals
+            data["activities"][idx]["status"]=SMAP.get(new_st,new_st)
         save_data(data)
-        st.success(f"✅ Saved for Activity {a['no']}!"); st.rerun()
+        st.success("✅ All activities saved!"); st.rerun()
 
 # ── SETUP ─────────────────────────────────────────────────────────────────────
 elif page=="⚙️ Setup":
