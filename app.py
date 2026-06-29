@@ -730,12 +730,12 @@ elif page=="📋 Process Guide":
         else:
             prompt_section = prompt_text
 
-        # Instruction banner
+        # Instruction banner + action buttons
         st.markdown("""
 <div style="background:#515863;border-radius:10px;padding:14px 20px;margin-bottom:12px">
 <b style="color:#BDE0A9;font-size:1.05rem">📋 How to use this prompt</b><br>
 <span style="color:#E8ECF0;font-size:.9rem">
-1. Click the <b>copy icon</b> (top-right of the code block below)<br>
+1. Click <b>⬇️ Download Prompt</b> (save to your computer) <b>OR</b> select all text below and copy<br>
 2. Open <b>claude.ai</b> or <b>chatgpt.com</b> → start a new conversation<br>
 3. Paste the prompt, then <b>attach your project proposal (.docx / .pdf)</b><br>
 4. The AI outputs a CSV block → save as <code>heymorning_task_import.csv</code><br>
@@ -744,8 +744,41 @@ elif page=="📋 Process Guide":
 </div>
 """, unsafe_allow_html=True)
 
-        # Full prompt — always visible, copy-ready
-        st.code(prompt_section, language="markdown")
+        # Action buttons row
+        btn_col1, btn_col2, btn_col3 = st.columns([2, 2, 4])
+
+        # Download button — saves prompt as .txt file
+        btn_col1.download_button(
+            label="⬇️ Download Prompt (.txt)",
+            data=prompt_section.encode("utf-8"),
+            file_name="WBS_Extraction_Prompt.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+        # Download as .md file
+        btn_col2.download_button(
+            label="📄 Download Prompt (.md)",
+            data=prompt_section.encode("utf-8"),
+            file_name="WBS_Extraction_Prompt.md",
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
+        btn_col3.info("💡 Or click inside the text box below → **Ctrl+A** → **Ctrl+C** to copy all")
+
+        # Full prompt in a tall text area — easy to select-all and copy
+        st.text_area(
+            label="Full AI Extraction Prompt (select all → copy)",
+            value=prompt_section,
+            height=520,
+            key="prompt_textarea",
+            help="Click inside → Ctrl+A to select all → Ctrl+C to copy"
+        )
+
+        # Also show as code block for syntax highlighting + built-in copy icon
+        with st.expander("📋 View as formatted code (with copy icon ↗)", expanded=False):
+            st.code(prompt_section, language="markdown")
 
     else:
         st.warning("WBS_Extraction_Prompt.md not found. Make sure it is in the same folder as app.py.")
