@@ -392,13 +392,16 @@ elif page=="📥 Import WBS":
 
     with tab1:
         st.markdown("### Pre-built Project Library")
-        st.markdown("Click **Load** to switch the active project instantly.")
+        st.markdown("**▶ Load** — switch active project &nbsp;|&nbsp; **🗑️ Remove** — delete from library")
+
+        def save_manifest(m):
+            with open(MANIFEST_PATH, "w", encoding="utf-8") as _mf:
+                json.dump(m, _mf, ensure_ascii=False, indent=2)
 
         if os.path.exists(MANIFEST_PATH):
             with open(MANIFEST_PATH, encoding="utf-8") as _f:
                 manifest = json.load(_f)
 
-            # Group by doc
             from collections import OrderedDict as OD
             by_doc = OD()
             for m in manifest:
@@ -408,13 +411,15 @@ elif page=="📥 Import WBS":
             for doc, entries in by_doc.items():
                 st.markdown(f"#### {doc_icons.get(doc,'📁')} {doc} — {len(entries)} sub-projects")
                 for e in entries:
-                    col_name, col_acts, col_bud, col_btn = st.columns([4,1,2,1])
+                    col_name, col_acts, col_bud, col_load, col_del = st.columns([4,1,2,1,1])
                     col_name.markdown(f"**{e['project_name']}**  \n<small>{e['phase']}</small>",
                                       unsafe_allow_html=True)
                     col_acts.metric("Tasks", e["n_activities"])
                     col_bud.metric("Budget", "THB {:,.0f}".format(e["total_budget"]) if e["total_budget"] else "—")
                     fpath = os.path.join(PROJECTS_DIR, e["filename"])
-                    if col_btn.button("▶ Load", key=f"lib_{e['key']}"):
+
+                    # Load button
+                    if col_load.button("▶ Load", key=f"lib_{e['key']}"):
                         if os.path.exists(fpath):
                             with open(fpath, encoding="utf-8") as _pf:
                                 new_proj = json.load(_pf)
@@ -423,7 +428,54 @@ elif page=="📥 Import WBS":
                             st.rerun()
                         else:
                             st.error(f"File not found: {fpath}")
+
+                    # Delete button — removes from manifest (and JSON file if exists)
+                    if col_del.button("🗑️", key=f"del_{e['key']}", help=f"Remove '{e['project_name']}' from library"):
+                        new_manifest = [m for m in manifest if m["key"] != e["key"]]
+                        save_manifest(new_manifest)
+                        if os.path.exists(fpath):
+                            os.remove(fpath)
+                        st.success(f"🗑️ Removed **{e['project_name']}** from library.")
+                        st.rerun()
+
                 st.markdown("---")
+
+            # ── Save current project to library ──────────────────────────────
+            st.markdown("#### ➕ Add Current Project to Library")
+            with st.form("save_to_lib"):
+                c1, c2, c3 = st.columns(3)
+                lib_name = c1.text_input("Library Name", data["project_name"])
+                lib_doc  = c2.text_input("Document Code", "CUSTOM")
+                lib_phase= c3.text_input("Phase / Tag", "Custom")
+                if st.form_submit_button("💾 Save to Library", use_container_width=True):
+                    import re as _re
+                    safe_key = _re.sub(r'[^A-Za-z0-9_]', '_', f"{lib_doc}_{lib_phase}")[:40]
+                    lib_filename = f"project_{safe_key}.json"
+                    lib_fpath = os.path.join(PROJECTS_DIR, lib_filename)
+                    os.makedirs(PROJECTS_DIR, exist_ok=True)
+                    # Write the project JSON
+                    lib_data = dict(data)
+                    lib_data["project_name"] = lib_name
+                    with open(lib_fpath, "w", encoding="utf-8") as _lf:
+                        json.dump(lib_data, _lf, ensure_ascii=False, indent=2)
+                    # Append to manifest
+                    with open(MANIFEST_PATH, encoding="utf-8") as _mf2:
+                        cur_manifest = json.load(_mf2)
+                    # Remove existing entry with same key if any
+                    cur_manifest = [m for m in cur_manifest if m["key"] != safe_key]
+                    cur_manifest.append({
+                        "key": safe_key,
+                        "filename": lib_filename,
+                        "project_name": lib_name,
+                        "doc": lib_doc,
+                        "phase": lib_phase,
+                        "n_activities": len(data["activities"]),
+                        "total_budget": data.get("total_budget", 0),
+                    })
+                    save_manifest(cur_manifest)
+                    st.success(f"✅ Saved **{lib_name}** to library as `{lib_filename}`")
+                    st.rerun()
+
         else:
             st.warning("No project library found. Run `wbs_extractor.py` to generate pre-built project files, or use the **Upload CSV** tab.")
             st.code("python wbs_extractor.py --csv heymorning_task_import.csv --outdir projects --combine-doc")
