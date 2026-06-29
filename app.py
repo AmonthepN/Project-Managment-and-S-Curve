@@ -3,7 +3,7 @@ S-Curve Project Monitoring System — Streamlit Web App
 Author: Faculty of Engineering, Chiang Mai University
 Run:  streamlit run app.py
 """
-import json, os
+import json, os, re, io, csv
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import streamlit as st
@@ -86,7 +86,7 @@ with st.sidebar:
     st.markdown("---")
     page=st.radio("Navigate",[
         "🏠 Dashboard","📈 S-Curve","📅 Gantt","📊 EVM Indicators",
-        "📝 Update Progress","⚙️ Setup"])
+        "📝 Update Progress","⚙️ Setup","📥 Import WBS"])
     st.markdown("---")
     data=load_data()
     cm=cur_month(data["start_date"],data["n_months"])
@@ -359,3 +359,147 @@ elif page=="⚙️ Setup":
                     "weight":aw,"start_month":int(as_),"end_month":int(ae),
                     "status":"❌ Not Started","actuals":{}})
                 save_data(data); st.success("✅ Added!"); st.rerun()
+
+# ── IMPORT WBS ────────────────────────────────────────────────────────────────
+elif page=="📥 Import WBS":
+    st.markdown("# 📥 Import WBS from CSV")
+    st.markdown("Upload the **`heymorning_task_import.csv`** exported from your project proposal to load activities into the S-Curve system.")
+    st.markdown("---")
+
+    # ── WBS CSV parser ────────────────────────────────────────────────────────
+    def parse_wbs_csv(file_bytes):
+        """Parse HeyMorning WBS CSV → list of raw row dicts."""
+        text = file_bytes.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        return list(reader)
+
+    def extract_notes(notes, key):
+        m = re.search(rf'{key}: ([^\|]+)', notes or "")
+        return m.group(1).strip() if m else ""
+
+    def parse_months(notes):
+        raw = extract_notes(notes, "Months")
+        try: return [int(x) for x in raw.split(",") if x.strip()]
+        except: return []
+
+    def rows_to_activities(rows, normalize=True):
+        """Convert filtered CSV rows to activity list for project_data.json."""
+        acts = []
+        for i, r in enumerate(rows):
+            months = parse_months(r.get("NOTES",""))
+            if not months: continue
+            wt_raw = extract_notes(r.get("NOTES",""), "Weight %")
+            try: wt = float(wt_raw)
+            except: wt = 0.0
+            wbs = extract_notes(r.get("NOTES",""), "WBS")
+            acts.append({
+                "no": wbs or str(i+1),
+                "name": r.get("TASK NAME","").strip(),
+                "name_th": r.get("TASK NAME","").strip(),
+                "weight": wt,
+                "start_month": min(months),
+                "end_month": max(months),
+                "status": "❌ Not Started",
+                "actuals": {}
+            })
+        # Normalize weights to sum to 100%
+        if normalize and acts:
+            total = sum(a["weight"] for a in acts)
+            if total > 0 and abs(total - 100.0) > 1.0:
+                for a in acts:
+                    a["weight"] = round(a["weight"] / total * 100, 2)
+        return acts
+
+    # ── Upload UI ─────────────────────────────────────────────────────────────
+    uploaded = st.file_uploader("Upload WBS CSV file", type=["csv"],
+                                help="Export from AI extraction pipeline as heymorning_task_import.csv")
+
+    if uploaded:
+        raw_rows = parse_wbs_csv(uploaded.read())
+        st.success(f"✅ Loaded {len(raw_rows)} activities from CSV")
+
+        # Group by PHASE
+        from collections import OrderedDict
+        phase_map = OrderedDict()
+        for r in raw_rows:
+            ph = r.get("PHASE","Unknown")
+            phase_map.setdefault(ph, []).append(r)
+
+        st.markdown("---")
+        st.markdown("### Step 1 — Select Sub-Project / Phase")
+        st.caption(f"{len(phase_map)} phases found in CSV")
+
+        # Phase summary table
+        ph_rows = []
+        for ph, rows2 in phase_map.items():
+            wts = []
+            for r in rows2:
+                try: wts.append(float(extract_notes(r.get("NOTES",""),"Weight %")))
+                except: pass
+            ph_rows.append({"Phase": ph, "Activities": len(rows2),
+                            "Weight Sum %": f"{sum(wts):.0f}",
+                            "Date Range": f"{rows2[0].get('START DATE','')} → {rows2[-1].get('DUE DATE','')}"})
+        st.dataframe(pd.DataFrame(ph_rows), use_container_width=True, hide_index=True)
+
+        sel_phase = st.selectbox("Select phase to import:", list(phase_map.keys()))
+        phase_rows = phase_map[sel_phase]
+        acts_preview = rows_to_activities(phase_rows, normalize=True)
+
+        st.markdown("---")
+        st.markdown(f"### Step 2 — Preview: **{sel_phase}** ({len(acts_preview)} activities)")
+        prev_df = pd.DataFrame([{
+            "No": a["no"], "Task Name": a["name"][:50],
+            "Weight %": f"{a['weight']:.1f}",
+            "M Start": a["start_month"], "M End": a["end_month"]
+        } for a in acts_preview])
+        st.dataframe(prev_df, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("### Step 3 — Project Settings")
+        with st.form("wbs_import_form"):
+            c1, c2 = st.columns(2)
+            proj_name = c1.text_input("Project Name (EN)",
+                f"Water Security — {sel_phase}")
+            proj_name_th = c2.text_input("Project Name (TH)",
+                "โครงการขับเคลื่อนยุทธศาสตร์น้ำมั่นคง")
+            c3, c4, c5 = st.columns(3)
+            p_start = c3.text_input("Start Date", phase_rows[0].get("START DATE","2025-10-01")[:10])
+            p_end   = c4.text_input("End Date",   phase_rows[-1].get("DUE DATE","2026-09-30")[:10])
+            n_mo    = c5.number_input("Months", 1, 36, 12)
+            budget  = st.number_input("Total Budget (THB)", value=20723000.0, step=100000.0)
+
+            overwrite = st.checkbox("⚠️ Replace current project data", value=True)
+
+            submitted = st.form_submit_button("📥 Import & Save", use_container_width=True)
+            if submitted:
+                new_data = {
+                    "project_name": proj_name,
+                    "project_name_th": proj_name_th,
+                    "start_date": p_start,
+                    "end_date": p_end,
+                    "n_months": int(n_mo),
+                    "total_budget": float(budget),
+                    "contract_no": "",
+                    "project_owner": "NRCT",
+                    "contractor": "Faculty of Engineering, CMU",
+                    "activities": acts_preview
+                }
+                if overwrite:
+                    save_data(new_data)
+                    st.success(f"✅ Imported {len(acts_preview)} activities from **{sel_phase}**! Navigate to Dashboard to view.")
+                    st.rerun()
+                else:
+                    # Merge — append activities with new WBS nos
+                    current = load_data()
+                    existing_nos = {a["no"] for a in current["activities"]}
+                    added = 0
+                    for a in acts_preview:
+                        if a["no"] not in existing_nos:
+                            current["activities"].append(a); added += 1
+                    save_data(current)
+                    st.success(f"✅ Merged: added {added} new activities.")
+                    st.rerun()
+    else:
+        st.info("Upload your WBS CSV file above to begin. The expected format is the `heymorning_task_import.csv` generated by the AI extraction pipeline.")
+        st.markdown("**Expected CSV columns:**")
+        st.code("PROJECT, PHASE, TASK NAME, DESCRIPTION, IMPORTANT, URGENT, STATUS, PRIORITY, ASSIGNED TO, START DATE, DUE DATE, KANBAN STAGE, PROGRESS, NOTES")
