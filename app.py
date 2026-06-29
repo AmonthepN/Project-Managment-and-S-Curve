@@ -281,126 +281,60 @@ elif page=="📝 Update Progress":
     st.markdown("---")
     if not acts: st.info("Add activities first in ⚙️ Setup."); st.stop()
 
-    sopts_raw=["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+    sopts_raw = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
 
-    # ── Tab layout: Quick Table | Full History ────────────────────────────────
-    tab_quick, tab_full = st.tabs(["⚡ Quick Edit (Current Month)", "📅 Full Monthly History"])
+    st.markdown(f"Double-click any cell to edit. Current month: **M{cm} — {labels[cm-1] if cm<=N else 'N/A'}** (highlighted).")
 
-    # ─── TAB 1: QUICK EDIT — editable table for current month only ─────────────
-    with tab_quick:
-        st.markdown(f"Editing **M{cm}** ({labels[cm-1] if cm<=N else 'N/A'}). Double-click any cell to edit.")
+    # Build single wide table: rows = activities, cols = Status + all months
+    prows = []
+    for a in acts:
+        sk = next((k for k in sopts_raw if k in a.get("status","")), sopts_raw[0])
+        row = {"No": a["no"], "Activity": a["name"][:45], "Wt%": a["weight"], "Status": sk}
+        for m in range(1, N+1):
+            in_range = a["start_month"] <= m <= a["end_month"]
+            row[f"M{m}"] = float(a.get("actuals",{}).get(str(m), 0.0)) if in_range else None
+        prows.append(row)
 
-        # Build dataframe rows
-        qrows = []
-        for a in acts:
-            sk = next((k for k in sopts_raw if k in a.get("status","")), sopts_raw[0])
-            cur_val = float(a.get("actuals",{}).get(str(cm), 0.0))
-            qrows.append({
-                "No":        a["no"],
-                "Activity":  a["name"],
-                "Wt %":      a["weight"],
-                "M Start":   a["start_month"],
-                "M End":     a["end_month"],
-                "Status":    sk,
-                f"M{cm} Actual %": cur_val,
-                "Notes":     a.get("actuals",{}).get("notes",""),
-            })
+    pdf = pd.DataFrame(prows)
 
-        qdf = pd.DataFrame(qrows)
+    # Month column configs — highlight current month
+    m_cfg = {}
+    for m in range(1, N+1):
+        col_lbl = f"M{m} ★" if m == cm else f"M{m}"
+        m_cfg[f"M{m}"] = st.column_config.NumberColumn(
+            col_lbl, min_value=0.0, max_value=100.0,
+            step=5.0, format="%.0f", width="small")
 
-        edited = st.data_editor(
-            qdf,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            column_config={
-                "No":        st.column_config.TextColumn("No", width="small", disabled=True),
-                "Activity":  st.column_config.TextColumn("Activity", width="large", disabled=True),
-                "Wt %":      st.column_config.NumberColumn("Wt %", width="small", disabled=True, format="%.1f"),
-                "M Start":   st.column_config.NumberColumn("From", width="small", disabled=True),
-                "M End":     st.column_config.NumberColumn("To",   width="small", disabled=True),
-                "Status":    st.column_config.SelectboxColumn(
-                                "Status", width="medium",
-                                options=sopts_raw, required=True),
-                f"M{cm} Actual %": st.column_config.NumberColumn(
-                                f"M{cm} — {labels[cm-1] if cm<=N else ''} (%)",
-                                width="medium", min_value=0.0, max_value=100.0,
-                                step=5.0, format="%.0f"),
-                "Notes":     st.column_config.TextColumn("Notes", width="medium"),
-            },
-            key="quick_editor"
-        )
+    col_cfg = {
+        "No":       st.column_config.TextColumn("No",       width="small",  disabled=True),
+        "Activity": st.column_config.TextColumn("Activity", width="large",  disabled=True),
+        "Wt%":      st.column_config.NumberColumn("Wt%",   width="small",  disabled=True, format="%.1f"),
+        "Status":   st.column_config.SelectboxColumn("Status", width="medium", options=sopts_raw),
+        **m_cfg,
+    }
 
-        st.markdown("")
-        cl, cr = st.columns([3,1])
-        cl.info(f"💡 Edit the **Status** and **M{cm} Actual %** columns directly in the table above, then click Save.")
-        if cr.button("💾 Save", use_container_width=True, type="primary"):
-            for i, row in edited.iterrows():
-                st_raw = row["Status"]
-                data["activities"][i]["status"] = SMAP.get(st_raw, st_raw)
-                data["activities"][i].setdefault("actuals",{})[str(cm)] = float(row[f"M{cm} Actual %"])
-                if row.get("Notes",""):
-                    data["activities"][i]["actuals"]["notes"] = row["Notes"]
-            save_data(data)
-            st.success(f"✅ M{cm} progress saved for all activities!"); st.rerun()
+    edited = st.data_editor(
+        pdf,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        column_config=col_cfg,
+        key="progress_editor"
+    )
 
-    # ─── TAB 2: FULL HISTORY — all months per activity ─────────────────────────
-    with tab_full:
-        st.markdown("Edit any month for any activity. Select an activity to expand its monthly grid.")
-
-        # Build one wide dataframe: rows=activities, cols=months
-        frows = []
-        for a in acts:
-            sk = next((k for k in sopts_raw if k in a.get("status","")), sopts_raw[0])
-            row = {"No": a["no"], "Activity": a["name"][:40], "Status": sk}
+    st.markdown("")
+    cl, cr = st.columns([4, 1])
+    cl.info("💡 Edit **Status** and any **M1–M12** cell. Blank cells (grey) = outside activity date range — leave as blank.")
+    if cr.button("💾 Save All", use_container_width=True, type="primary"):
+        for i, row in edited.iterrows():
+            st_raw = str(row["Status"])
+            data["activities"][i]["status"] = SMAP.get(st_raw, st_raw)
             for m in range(1, N+1):
-                lbl = labels[m-1][:6]
-                # Only editable if within activity range
-                in_range = a["start_month"] <= m <= a["end_month"]
-                row[lbl] = float(a.get("actuals",{}).get(str(m), 0.0)) if in_range else None
-            frows.append(row)
-
-        fdf = pd.DataFrame(frows)
-
-        # Column config for month columns
-        m_cols = {labels[m-1][:6]: st.column_config.NumberColumn(
-                    labels[m-1][:6], min_value=0.0, max_value=100.0,
-                    step=5.0, format="%.0f", width="small")
-                  for m in range(1,N+1)}
-
-        col_cfg = {
-            "No":       st.column_config.TextColumn("No", width="small", disabled=True),
-            "Activity": st.column_config.TextColumn("Activity", width="large", disabled=True),
-            "Status":   st.column_config.SelectboxColumn("Status", width="medium", options=sopts_raw),
-            **m_cols
-        }
-
-        st.markdown(f"**All {N} months — rows = activities, columns = months**")
-        fedited = st.data_editor(
-            fdf,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            column_config=col_cfg,
-            key="full_editor"
-        )
-
-        st.markdown("")
-        cl2, cr2 = st.columns([3,1])
-        cl2.info("💡 Grey cells = outside the activity date range (leave as blank). Edit any white cell and click Save All.")
-        if cr2.button("💾 Save All Months", use_container_width=True, type="primary"):
-            for i, row in fedited.iterrows():
-                st_raw = row["Status"]
-                data["activities"][i]["status"] = SMAP.get(st_raw, st_raw)
-                for m in range(1, N+1):
-                    lbl = labels[m-1][:6]
-                    val = row.get(lbl)
-                    if val is not None and not pd.isna(val):
-                        data["activities"][i].setdefault("actuals",{})[str(m)] = float(val)
-                    elif str(m) in data["activities"][i].get("actuals",{}):
-                        pass  # keep existing value if cell was blank (outside range)
-            save_data(data)
-            st.success("✅ Full history saved!"); st.rerun()
+                val = row.get(f"M{m}")
+                if val is not None and not pd.isna(val):
+                    data["activities"][i].setdefault("actuals",{})[str(m)] = float(val)
+        save_data(data)
+        st.success("✅ Progress saved!"); st.rerun()
 
 # ── SETUP ─────────────────────────────────────────────────────────────────────
 elif page=="⚙️ Setup":
