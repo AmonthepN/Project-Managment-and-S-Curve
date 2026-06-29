@@ -362,9 +362,56 @@ elif page=="⚙️ Setup":
 
 # ── IMPORT WBS ────────────────────────────────────────────────────────────────
 elif page=="📥 Import WBS":
-    st.markdown("# 📥 Import WBS from CSV")
-    st.markdown("Upload the **`heymorning_task_import.csv`** exported from your project proposal to load activities into the S-Curve system.")
+    st.markdown("# 📥 Import WBS")
     st.markdown("---")
+
+    MANIFEST_PATH = "projects/project_manifest.json"
+    PROJECTS_DIR  = "projects"
+
+    # ── TAB A: Project Library (pre-built JSONs) ──────────────────────────────
+    tab1, tab2 = st.tabs(["📚 Project Library", "📄 Upload CSV"])
+
+    with tab1:
+        st.markdown("### Pre-built Project Library")
+        st.markdown("Click **Load** to switch the active project instantly.")
+
+        if os.path.exists(MANIFEST_PATH):
+            with open(MANIFEST_PATH, encoding="utf-8") as _f:
+                manifest = json.load(_f)
+
+            # Group by doc
+            from collections import OrderedDict as OD
+            by_doc = OD()
+            for m in manifest:
+                by_doc.setdefault(m["doc"], []).append(m)
+
+            doc_icons = {"FULL":"🌐","CM":"🏔️","CR":"🌾","LP":"🌿","PY":"💧"}
+            for doc, entries in by_doc.items():
+                st.markdown(f"#### {doc_icons.get(doc,'📁')} {doc} — {len(entries)} sub-projects")
+                for e in entries:
+                    col_name, col_acts, col_bud, col_btn = st.columns([4,1,2,1])
+                    col_name.markdown(f"**{e['project_name']}**  \n<small>{e['phase']}</small>",
+                                      unsafe_allow_html=True)
+                    col_acts.metric("Tasks", e["n_activities"])
+                    col_bud.metric("Budget", "THB {:,.0f}".format(e["total_budget"]) if e["total_budget"] else "—")
+                    fpath = os.path.join(PROJECTS_DIR, e["filename"])
+                    if col_btn.button("▶ Load", key=f"lib_{e['key']}"):
+                        if os.path.exists(fpath):
+                            with open(fpath, encoding="utf-8") as _pf:
+                                new_proj = json.load(_pf)
+                            save_data(new_proj)
+                            st.success(f"✅ Loaded: **{e['project_name']}** ({e['n_activities']} activities)")
+                            st.rerun()
+                        else:
+                            st.error(f"File not found: {fpath}")
+                st.markdown("---")
+        else:
+            st.warning("No project library found. Run `wbs_extractor.py` to generate pre-built project files, or use the **Upload CSV** tab.")
+            st.code("python wbs_extractor.py --csv heymorning_task_import.csv --outdir projects --combine-doc")
+
+    with tab2:
+      st.markdown("### Upload WBS CSV")
+      st.markdown("Upload `heymorning_task_import.csv` to parse, select a phase, and import.")
 
     # ── WBS CSV parser ────────────────────────────────────────────────────────
     def parse_wbs_csv(file_bytes):
