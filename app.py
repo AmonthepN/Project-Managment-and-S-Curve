@@ -454,7 +454,7 @@ elif page=="📥 Import WBS":
     PROJECTS_DIR  = "projects"
 
     # ── TAB A: Project Library (pre-built JSONs) ──────────────────────────────
-    tab1, tab2 = st.tabs(["📚 Project Library", "📄 Upload CSV"])
+    tab1, tab2, tab3 = st.tabs(["📚 Project Library", "📄 Upload CSV", "✏️ Manage Activities"])
 
     with tab1:
         st.markdown("### Pre-built Project Library")
@@ -495,8 +495,78 @@ elif page=="📥 Import WBS":
             st.code("python wbs_extractor.py --csv heymorning_task_import.csv --outdir projects --combine-doc")
 
     with tab2:
-      st.markdown("### Upload WBS CSV")
-      st.markdown("Upload `heymorning_task_import.csv` to parse, select a phase, and import.")
+        st.markdown("### Upload WBS CSV")
+        st.markdown("Upload `heymorning_task_import.csv` to parse, select a phase, and import.")
+
+    with tab3:
+        st.markdown("### ✏️ Manage Current Project Activities")
+        st.markdown(f"**{data['project_name']}** — {len(acts)} activities loaded")
+        st.markdown("Use the table below to **add new rows** (click ＋ at the bottom) or **delete rows** (select row → Delete key, or use the row checkbox). Click **💾 Save Changes** when done.")
+        st.markdown("---")
+
+        sopts_manage = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+
+        # Build editable dataframe from current activities
+        mrows = []
+        for a in acts:
+            sk = next((k for k in sopts_manage if k in a.get("status","")), sopts_manage[0])
+            mrows.append({
+                "No":          a.get("no",""),
+                "Name (EN)":   a.get("name",""),
+                "Name (TH)":   a.get("name_th",""),
+                "Weight %":    float(a.get("weight",0)),
+                "Start M":     int(a.get("start_month",1)),
+                "End M":       int(a.get("end_month",1)),
+                "Status":      sk,
+            })
+
+        mdf = pd.DataFrame(mrows) if mrows else pd.DataFrame(columns=["No","Name (EN)","Name (TH)","Weight %","Start M","End M","Status"])
+
+        managed = st.data_editor(
+            mdf,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",          # ← enables add row (+) and delete (trash)
+            column_config={
+                "No":        st.column_config.TextColumn("No", width="small"),
+                "Name (EN)": st.column_config.TextColumn("Name (EN)", width="large"),
+                "Name (TH)": st.column_config.TextColumn("Name (TH)", width="large"),
+                "Weight %":  st.column_config.NumberColumn("Weight %", min_value=0.0, max_value=100.0, step=0.5, format="%.2f", width="small"),
+                "Start M":   st.column_config.NumberColumn("Start M",  min_value=1, max_value=36, step=1, width="small"),
+                "End M":     st.column_config.NumberColumn("End M",    min_value=1, max_value=36, step=1, width="small"),
+                "Status":    st.column_config.SelectboxColumn("Status", width="medium", options=sopts_manage),
+            },
+            key="manage_editor"
+        )
+
+        wt_sum = managed["Weight %"].sum() if len(managed) > 0 else 0
+        c_info, c_save, c_norm = st.columns([3,1,1])
+        c_info.markdown(f"**{len(managed)} activities** | Weight sum: **{wt_sum:.1f}%** {'✅' if abs(wt_sum-100)<1 else '⚠️ should be 100%'}")
+
+        if c_norm.button("⚖️ Normalize Weights", use_container_width=True):
+            if wt_sum > 0:
+                managed["Weight %"] = (managed["Weight %"] / wt_sum * 100).round(2)
+                st.info("Weights normalized to 100%. Click 💾 Save Changes to apply.")
+
+        if c_save.button("💾 Save Changes", use_container_width=True, type="primary"):
+            new_acts = []
+            for _, row in managed.iterrows():
+                name = str(row.get("Name (EN)","")).strip()
+                if not name: continue  # skip blank rows
+                st_raw = str(row.get("Status","Not Started"))
+                new_acts.append({
+                    "no":          str(row.get("No","")),
+                    "name":        name,
+                    "name_th":     str(row.get("Name (TH)","")).strip() or name,
+                    "weight":      float(row.get("Weight %", 0) or 0),
+                    "start_month": int(row.get("Start M", 1) or 1),
+                    "end_month":   int(row.get("End M", 1) or 1),
+                    "status":      SMAP.get(st_raw, st_raw),
+                    "actuals":     next((a.get("actuals",{}) for a in acts if a.get("no")==str(row.get("No",""))), {}),
+                })
+            data["activities"] = new_acts
+            save_data(data)
+            st.success(f"✅ Saved {len(new_acts)} activities!"); st.rerun()
 
     # ── WBS CSV parser ────────────────────────────────────────────────────────
     def parse_wbs_csv(file_bytes):
