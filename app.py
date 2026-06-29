@@ -156,6 +156,11 @@ def load_data():
 def save_data(d):
     with open(DATA_FILE,"w",encoding="utf-8") as f: json.dump(d,f,ensure_ascii=False,indent=2)
     st.cache_data.clear()
+    # Auto-sync to SQLite if this project is tracked in the DB
+    _key = d.get("_db_key")
+    if _key:
+        db_save(_key, d.get("project_name",""), d.get("project_name_th",""),
+                d.get("_db_doc","CUSTOM"), d.get("_db_phase","Custom"), d)
 
 @st.cache_data
 def get_labels(start_iso, n):
@@ -538,6 +543,10 @@ elif page=="📥 Import WBS":
                 if c_load.button("▶ Load", key=f"db_load_{e['key']}"):
                     proj = db_get(e["key"])
                     if proj:
+                        # Stamp DB tracking keys so every subsequent save_data() syncs back
+                        proj["_db_key"]   = e["key"]
+                        proj["_db_doc"]   = e["doc"]
+                        proj["_db_phase"] = e["phase"]
                         save_data(proj)
                         db_touch(e["key"])
                         st.success(f"✅ Loaded **{e['project_name']}** ({e['n_activities']} tasks)")
@@ -565,8 +574,16 @@ elif page=="📥 Import WBS":
                 save_proj = dict(data)
                 save_proj["project_name"]    = lib_name
                 save_proj["project_name_th"] = lib_name_th
+                # Stamp tracking keys so future edits auto-sync
+                save_proj["_db_key"]   = safe_key
+                save_proj["_db_doc"]   = lib_doc
+                save_proj["_db_phase"] = lib_phase
                 db_save(safe_key, lib_name, lib_name_th, lib_doc, lib_phase, save_proj)
-                st.success(f"✅ Saved **{lib_name}** to database")
+                # Also write back to project_data.json so the tracking keys persist immediately
+                with open(DATA_FILE, "w", encoding="utf-8") as _f:
+                    json.dump(save_proj, _f, ensure_ascii=False, indent=2)
+                st.cache_data.clear()
+                st.success(f"✅ Saved **{lib_name}** to database — edits will now auto-sync")
                 st.rerun()
 
     with tab2:
