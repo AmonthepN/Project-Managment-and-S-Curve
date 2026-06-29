@@ -1,0 +1,143 @@
+{
+  "project_name": "Driving Integrated Provincial Water Management Plan and Subdistrict-Level Water Resources Management in Ping River Basin, Chiang Mai Province",
+  "project_name_th": "การขับเคลื่อนแผนงานบูรณาการการจัดการน้ำระดับจังหวัดและการบริหารจัดการน้ำในระดับตำบลในพื้นที่ลุ่มน้ำปิง จังหวัดเชียงใหม่",
+  "contract_no": "Strategic Fund (SF) — สำนักงานการวิจัยแห่งชาติ (วช.) FY2569",
+  "project_owner": "สำนักงานการวิจัยแห่งชาติ (วช.) — National Research Council of Thailand (NRCT)",
+  "contractor": "Faculty of Engineering, Chiang Mai University / Research Team",
+  "start_date": "2025-10-01",
+  "end_date": "2026-09-30",
+  "total_budget": 8166000,
+  "n_months": 12,
+  "activities": [
+    {
+      "no": "1",
+      "name": "Establish Provincial Water Management Working Mechanism & Decision Hub",
+      "name_th": "จัดตั้งและปรับกลไกคณะทำงานด้านน้ำระดับจังหวัด",
+      "weight": 10.0,
+      "start_month": 1,
+      "end_month": 3,
+      "status": "✅ Completed",
+      "actuals": {
+        "1": 100,
+        "2": 100,
+        "3": 100
+      }
+    },
+    {
+      "no": "2",
+      "name": "Develop Shared GIS Database & Secondary Data Integration",
+      "name_th": "พัฒนาฐานข้อมูลร่วมจากข้อมูลทุติยภูมิและระบบสารสนเทศภูมิศาสตร์",
+      "weight": 15.0,
+      "start_month": 1,
+      "end_month": 5,
+      "status": "🚧 In Progress",
+      "actuals": {
+        "1": 80,
+        "2": 100,
+        "3": 100,
+        "4": 60
+      }
+    },
+    {
+      "no": "3",
+      "name": "Develop Quality Criteria & Technical Documents for Thai Water Plan Proposals",
+      "name_th": "จัดทำเกณฑ์คุณภาพและชุดเอกสารทางเทคนิคสำหรับข้อเสนอโครงการ Thai Water Plan",
+      "weight": 15.0,
+      "start_month": 2,
+      "end_month": 6,
+      "status": "🚧 In Progress",
+      "actuals": {
+        "1": 60,
+        "2": 100,
+        "3": 100,
+        "4": 80
+      }
+    },
+    {
+      "no": "4",
+      "name": "Capacity Building & Co-working with 10 Target Sub-districts",
+      "name_th": "จัดกระบวนการพัฒนาศักยภาพและทำงานร่วมเชิงพื้นที่กับ 10 ตำบลเป้าหมาย",
+      "weight": 25.0,
+      "start_month": 3,
+      "end_month": 9,
+      "status": "🚧 In Progress",
+      "actuals": {
+        "4": 50,
+        "5": 40
+      }
+    },
+    {
+      "no": "5",
+      "name": "Community-Based Flood Early Warning System (CBDRMS) Prototype",
+      "name_th": "พัฒนาต้นแบบระบบเตือนภัยน้ำท่วมระดับชุมชน (CBDRMS)",
+      "weight": 10.0,
+      "start_month": 4,
+      "end_month": 9,
+      "status": "🚧 In Progress",
+      "actuals": {
+        "3": 80,
+        "4": 60,
+        "5": 40
+      }
+    },
+    {
+      "no": "6",
+      "name": "Community Weir Management & Water Source Improvement",
+      "name_th": "พัฒนากระบวนการยกระดับน้ำต้นทุนและการเพิ่มประสิทธิภาพระบบฝาย",
+      "weight": 10.0,
+      "start_month": 4,
+      "end_month": 9,
+      "status": "🚧 In Progress",
+      "actuals": {
+        "2": 100,
+        "3": 100,
+        "4": 80,
+        "5": 60
+      }
+    },
+    {
+      "no": "7",
+      "name": "3C Standard Water Supply & Bio-char Technology Prototype",
+      "name_th": "พัฒนาต้นแบบเทคโนโลยีระบบประปามาตรฐาน 3C และ Bio-char",
+      "weight": 5.0,
+      "start_month": 5,
+      "end_month": 9,
+      "status": "⏳ Pending",
+      "actuals": {
+        "5": 20
+      }
+    },
+    {
+      "no": "8",
+      "name": "Water Obstruction Assessment & Drainage Inspection",
+      "name_th": "พัฒนาการตรวจประเมินสิ่งกีดขวางทางน้ำ",
+      "weight": 5.0,
+      "start_month": 5,
+      "end_month": 8,
+      "status": "⏳ Pending",
+      "actuals": {}
+    },
+    {
+      "no": "9",
+      "name": "Water Security Plan for Sustainable Tourism Areas",
+      "name_th": "พัฒนาแผนน้ำมั่นคงเพื่อการท่องเที่ยว",
+      "weight": 2.5,
+      "start_month": 6,
+      "end_month": 10,
+      "status": "⏳ Pending",
+      "actuals": {
+        "4": 30
+      }
+    },
+    {
+      "no": "10",
+      "name": "Project Synthesis, Knowledge Management & Final Report Submission",
+      "name_th": "สรุปบทเรียน การจัดการองค์ความรู้ และจัดทำรายงานวิจัยฉบับสมบูรณ์",
+      "weight": 2.5,
+      "start_month": 10,
+      "end_month": 12,
+      "status": "⏳ Pending",
+      "actuals": {}
+    }
+  ]
+}
