@@ -278,44 +278,129 @@ elif page=="📊 EVM Indicators":
 # ── UPDATE PROGRESS ───────────────────────────────────────────────────────────
 elif page=="📝 Update Progress":
     st.markdown("# 📝 Update Progress")
-    st.markdown("Edit status and monthly actuals for all activities, then click **Save All**.")
     st.markdown("---")
     if not acts: st.info("Add activities first in ⚙️ Setup."); st.stop()
 
-    sopts=["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
-    new_data=[]  # collect all edits
+    sopts_raw=["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
 
-    for idx,a in enumerate(acts):
-        actuals=a.get("actuals",{})
-        sk=next((k for k in sopts if k in a.get("status","")),sopts[0])
-        months_act=list(range(a["start_month"],a["end_month"]+1))
+    # ── Tab layout: Quick Table | Full History ────────────────────────────────
+    tab_quick, tab_full = st.tabs(["⚡ Quick Edit (Current Month)", "📅 Full Monthly History"])
 
-        with st.expander(f"**{a['no']}. {a['name']}**  —  Weight: {a['weight']}%  |  M{a['start_month']}→M{a['end_month']}  |  Status: {sk}",
-                         expanded=(idx==0)):
-            c_stat, c_sp = st.columns([2,3])
-            new_st=c_stat.selectbox("Status",sopts,index=sopts.index(sk),key=f"st{idx}")
-            c_sp.markdown("")
+    # ─── TAB 1: QUICK EDIT — editable table for current month only ─────────────
+    with tab_quick:
+        st.markdown(f"Editing **M{cm}** ({labels[cm-1] if cm<=N else 'N/A'}). Double-click any cell to edit.")
 
-            # Month inputs in rows of 6
-            new_actuals={}
-            for i in range(0,len(months_act),6):
-                chunk=months_act[i:i+6]
-                cols=st.columns(len(chunk))
-                for col,m in zip(cols,chunk):
-                    lbl=(datetime.strptime(SI,"%Y-%m-%d")+relativedelta(months=m-1)).strftime("%b %y")
-                    new_actuals[str(m)]=col.number_input(
-                        lbl, 0.0, 100.0, float(actuals.get(str(m),0)), 5.0,
-                        key=f"a{idx}m{m}")
+        # Build dataframe rows
+        qrows = []
+        for a in acts:
+            sk = next((k for k in sopts_raw if k in a.get("status","")), sopts_raw[0])
+            cur_val = float(a.get("actuals",{}).get(str(cm), 0.0))
+            qrows.append({
+                "No":        a["no"],
+                "Activity":  a["name"],
+                "Wt %":      a["weight"],
+                "M Start":   a["start_month"],
+                "M End":     a["end_month"],
+                "Status":    sk,
+                f"M{cm} Actual %": cur_val,
+                "Notes":     a.get("actuals",{}).get("notes",""),
+            })
 
-            new_data.append((idx, new_st, new_actuals))
+        qdf = pd.DataFrame(qrows)
 
-    st.markdown("---")
-    if st.button("💾 Save All Activities", use_container_width=True):
-        for idx, new_st, new_actuals in new_data:
-            data["activities"][idx]["actuals"]=new_actuals
-            data["activities"][idx]["status"]=SMAP.get(new_st,new_st)
-        save_data(data)
-        st.success("✅ All activities saved!"); st.rerun()
+        edited = st.data_editor(
+            qdf,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            column_config={
+                "No":        st.column_config.TextColumn("No", width="small", disabled=True),
+                "Activity":  st.column_config.TextColumn("Activity", width="large", disabled=True),
+                "Wt %":      st.column_config.NumberColumn("Wt %", width="small", disabled=True, format="%.1f"),
+                "M Start":   st.column_config.NumberColumn("From", width="small", disabled=True),
+                "M End":     st.column_config.NumberColumn("To",   width="small", disabled=True),
+                "Status":    st.column_config.SelectboxColumn(
+                                "Status", width="medium",
+                                options=sopts_raw, required=True),
+                f"M{cm} Actual %": st.column_config.NumberColumn(
+                                f"M{cm} — {labels[cm-1] if cm<=N else ''} (%)",
+                                width="medium", min_value=0.0, max_value=100.0,
+                                step=5.0, format="%.0f"),
+                "Notes":     st.column_config.TextColumn("Notes", width="medium"),
+            },
+            key="quick_editor"
+        )
+
+        st.markdown("")
+        cl, cr = st.columns([3,1])
+        cl.info(f"💡 Edit the **Status** and **M{cm} Actual %** columns directly in the table above, then click Save.")
+        if cr.button("💾 Save", use_container_width=True, type="primary"):
+            for i, row in edited.iterrows():
+                st_raw = row["Status"]
+                data["activities"][i]["status"] = SMAP.get(st_raw, st_raw)
+                data["activities"][i].setdefault("actuals",{})[str(cm)] = float(row[f"M{cm} Actual %"])
+                if row.get("Notes",""):
+                    data["activities"][i]["actuals"]["notes"] = row["Notes"]
+            save_data(data)
+            st.success(f"✅ M{cm} progress saved for all activities!"); st.rerun()
+
+    # ─── TAB 2: FULL HISTORY — all months per activity ─────────────────────────
+    with tab_full:
+        st.markdown("Edit any month for any activity. Select an activity to expand its monthly grid.")
+
+        # Build one wide dataframe: rows=activities, cols=months
+        frows = []
+        for a in acts:
+            sk = next((k for k in sopts_raw if k in a.get("status","")), sopts_raw[0])
+            row = {"No": a["no"], "Activity": a["name"][:40], "Status": sk}
+            for m in range(1, N+1):
+                lbl = labels[m-1][:6]
+                # Only editable if within activity range
+                in_range = a["start_month"] <= m <= a["end_month"]
+                row[lbl] = float(a.get("actuals",{}).get(str(m), 0.0)) if in_range else None
+            frows.append(row)
+
+        fdf = pd.DataFrame(frows)
+
+        # Column config for month columns
+        m_cols = {labels[m-1][:6]: st.column_config.NumberColumn(
+                    labels[m-1][:6], min_value=0.0, max_value=100.0,
+                    step=5.0, format="%.0f", width="small")
+                  for m in range(1,N+1)}
+
+        col_cfg = {
+            "No":       st.column_config.TextColumn("No", width="small", disabled=True),
+            "Activity": st.column_config.TextColumn("Activity", width="large", disabled=True),
+            "Status":   st.column_config.SelectboxColumn("Status", width="medium", options=sopts_raw),
+            **m_cols
+        }
+
+        st.markdown(f"**All {N} months — rows = activities, columns = months**")
+        fedited = st.data_editor(
+            fdf,
+            use_container_width=True,
+            hide_index=True,
+            num_rows="fixed",
+            column_config=col_cfg,
+            key="full_editor"
+        )
+
+        st.markdown("")
+        cl2, cr2 = st.columns([3,1])
+        cl2.info("💡 Grey cells = outside the activity date range (leave as blank). Edit any white cell and click Save All.")
+        if cr2.button("💾 Save All Months", use_container_width=True, type="primary"):
+            for i, row in fedited.iterrows():
+                st_raw = row["Status"]
+                data["activities"][i]["status"] = SMAP.get(st_raw, st_raw)
+                for m in range(1, N+1):
+                    lbl = labels[m-1][:6]
+                    val = row.get(lbl)
+                    if val is not None and not pd.isna(val):
+                        data["activities"][i].setdefault("actuals",{})[str(m)] = float(val)
+                    elif str(m) in data["activities"][i].get("actuals",{}):
+                        pass  # keep existing value if cell was blank (outside range)
+            save_data(data)
+            st.success("✅ Full history saved!"); st.rerun()
 
 # ── SETUP ─────────────────────────────────────────────────────────────────────
 elif page=="⚙️ Setup":
