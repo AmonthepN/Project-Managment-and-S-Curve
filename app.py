@@ -720,22 +720,36 @@ elif page=="📋 Process Guide":
 
     # ── WBS PROMPT DISPLAY ────────────────────────────────────────────────────
     st.markdown("## 🤖 AI Extraction Prompt")
-    st.markdown("Copy this prompt and use it with Claude or ChatGPT + your proposal document.")
 
     PROMPT_PATH = "WBS_Extraction_Prompt.md"
     if os.path.exists(PROMPT_PATH):
         with open(PROMPT_PATH, encoding="utf-8") as _pf:
             prompt_text = _pf.read()
-        # Show only the extractable prompt section
         if "=== PASTE PROMPT BELOW ===" in prompt_text:
             prompt_section = prompt_text.split("=== PASTE PROMPT BELOW ===")[1].split("=== END OF PROMPT ===")[0].strip()
         else:
             prompt_section = prompt_text
-        with st.expander("📋 View / Copy Full Prompt", expanded=False):
-            st.code(prompt_section, language="markdown")
-        st.info("💡 Tip: Click the copy icon (top-right of the code block above) to copy the full prompt, then paste into Claude or ChatGPT with your document attached.")
+
+        # Instruction banner
+        st.markdown("""
+<div style="background:#515863;border-radius:10px;padding:14px 20px;margin-bottom:12px">
+<b style="color:#BDE0A9;font-size:1.05rem">📋 How to use this prompt</b><br>
+<span style="color:#E8ECF0;font-size:.9rem">
+1. Click the <b>copy icon</b> (top-right of the code block below)<br>
+2. Open <b>claude.ai</b> or <b>chatgpt.com</b> → start a new conversation<br>
+3. Paste the prompt, then <b>attach your project proposal (.docx / .pdf)</b><br>
+4. The AI outputs a CSV block → save as <code>heymorning_task_import.csv</code><br>
+5. Go to <b>📥 Import WBS → Upload CSV</b> to load it into the app
+</span>
+</div>
+""", unsafe_allow_html=True)
+
+        # Full prompt — always visible, copy-ready
+        st.code(prompt_section, language="markdown")
+
     else:
         st.warning("WBS_Extraction_Prompt.md not found. Make sure it is in the same folder as app.py.")
+        st.markdown("**Expected location:** `scurve_webapp/WBS_Extraction_Prompt.md`")
 
     st.markdown("---")
 
