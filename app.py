@@ -32,6 +32,15 @@ st.markdown("""
 .stButton>button:hover{background:#1D4ED8}
 div[data-testid="stMetricValue"]{color:#2563EB!important;font-size:1.8rem!important}
 div[data-testid="stMetricLabel"]{color:#6B7280!important}
+[data-testid="stWidgetLabel"],label,.stTextInput label,.stSelectbox label,.stNumberInput label,
+.stTextArea label,.stDateInput label,.stFileUploader label,.stCheckbox label,.stRadio label,
+.stSlider label,.stMultiSelect label{color:#374151!important;font-weight:600!important}
+[data-testid="stExpander"] summary,[data-testid="stExpander"] summary *{color:#1F2937!important}
+[data-testid="stTabs"] [data-testid="stMarkdownContainer"] p{color:#374151}
+.stDataFrame thead th{background:#F3F4F6!important;color:#1F2937!important}
+input,textarea,select{color:#1F2937!important;background:#FFFFFF!important}
+[data-testid="stSelectbox"] div,[data-testid="stMultiSelect"] div{color:#1F2937!important}
+p,li,span:not([class]){color:#1F2937}
 </style>""", unsafe_allow_html=True)
 
 # ── Project Database (SQLite) ─────────────────────────────────────────────────
