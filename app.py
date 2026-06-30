@@ -82,10 +82,29 @@ div[data-testid="stMetricValue"]{color:#0A0A0A!important;font-size:1.7rem!import
 div[data-testid="stMetricLabel"]{color:#6B6B6B!important;font-size:.75rem!important;text-transform:uppercase;letter-spacing:.5px}
 div[data-testid="stMetricDelta"]{font-size:.8rem!important}
 
-/* ── Widget labels ── */
-[data-testid="stWidgetLabel"],label,.stTextInput label,.stSelectbox label,.stNumberInput label,
-.stTextArea label,.stDateInput label,.stFileUploader label,.stCheckbox label,.stRadio label,
-.stSlider label,.stMultiSelect label{color:#0A0A0A!important;font-weight:600!important;font-size:.85rem!important}
+/* ── Widget labels (all variants) ── */
+[data-testid="stWidgetLabel"],
+[data-testid="stWidgetLabel"] p,
+[data-testid="stWidgetLabel"] span,
+[data-testid="stWidgetLabel"] label,
+label,
+.stTextInput label, .stTextInput label p,
+.stSelectbox label, .stSelectbox label p,
+.stNumberInput label, .stNumberInput label p,
+.stTextArea label, .stTextArea label p,
+.stDateInput label, .stDateInput label p,
+.stFileUploader label, .stFileUploader label p,
+.stCheckbox label, .stCheckbox label p,
+.stRadio label, .stRadio label p,
+.stSlider label, .stSlider label p,
+.stMultiSelect label, .stMultiSelect label p,
+.stDateInput [data-testid="stWidgetLabel"] p,
+div[class*="stForm"] label,
+div[class*="stForm"] p{
+  color:#0A0A0A!important;font-weight:600!important;font-size:.85rem!important}
+/* form helper text / captions under inputs */
+[data-testid="stWidgetLabel"]+div p,
+[data-baseweb="form-control-label"]{color:#0A0A0A!important}
 
 /* ── Expanders ── */
 [data-testid="stExpander"]{background:#FFFFFF;border-radius:12px;border:1px solid #E0E0E0!important;margin-bottom:6px}
