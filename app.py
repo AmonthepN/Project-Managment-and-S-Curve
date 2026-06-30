@@ -67,8 +67,18 @@ div[data-testid="stMetricDelta"]{font-size:.8rem!important}
 [data-testid="stExpander"] summary{font-weight:600!important;color:#0A0A0A!important}
 
 /* ── Tabs ── */
-[data-testid="stTabs"] [role="tab"]{font-weight:600;color:#6B6B6B}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"]{color:#0A0A0A;border-bottom-color:#1AE06B!important}
+[data-testid="stTabs"] [role="tablist"]{background:#EFEFEF;border-bottom:none!important;gap:4px;padding:4px}
+[data-testid="stTabs"] [role="tab"]{
+  font-weight:600;font-size:.85rem;color:#6B6B6B;
+  background:transparent;border:none!important;border-radius:10px!important;
+  padding:7px 18px!important;transition:all .18s}
+[data-testid="stTabs"] [role="tab"]:hover{background:#E0E0E0!important;color:#0A0A0A!important}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{
+  background:#0A0A0A!important;color:#FFFFFF!important;
+  border-radius:10px!important;border:none!important;
+  box-shadow:0 2px 8px rgba(0,0,0,.18)}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]:hover{background:#1AE06B!important;color:#0A0A0A!important}
+[data-testid="stTabContent"]{padding-top:16px}
 
 /* ── Data editor / tables ── */
 .stDataFrame thead th{background:#F2F2F2!important;color:#0A0A0A!important;font-weight:700!important}
