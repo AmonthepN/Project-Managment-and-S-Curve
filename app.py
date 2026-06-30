@@ -22,6 +22,12 @@ st.markdown("""
 /* ── Sidebar ── */
 [data-testid="stSidebar"]{background-color:#FFFFFF!important;border-right:1px solid #E0E0E0}
 [data-testid="stSidebar"] *{color:#0A0A0A!important}
+/* Working project card — override sidebar wildcard */
+[data-testid="stSidebar"] .proj-card *{color:inherit!important}
+[data-testid="stSidebar"] .proj-label{color:#1AE06B!important}
+[data-testid="stSidebar"] .proj-title{color:#FFFFFF!important}
+[data-testid="stSidebar"] .proj-chip{color:#AAAAAA!important}
+[data-testid="stSidebar"] .proj-chip-g{color:#1AE06B!important}
 
 /* Nav radio — pill style */
 [data-testid="stSidebar"] .stRadio [data-testid="stWidgetLabel"]{
@@ -528,13 +534,13 @@ with st.sidebar:
     _phase   = _data_sb.get("_db_phase", "")
     _n_acts  = len(_data_sb.get("activities", []))
     st.markdown(
-        f"<div style='background:#0A0A0A;border-radius:14px;padding:12px 14px;margin-bottom:16px'>"
-        f"<div style='color:#1AE06B;font-size:.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px'>▶ Working Project</div>"
-        f"<div style='color:#FFFFFF;font-size:.88rem;font-weight:700;line-height:1.3;margin-bottom:6px'>{_aname[:42]}</div>"
-        f"<div style='display:flex;gap:8px;flex-wrap:wrap'>"
-        f"<span style='background:#1A1A1A;color:#9B9B9B;font-size:.68rem;padding:2px 8px;border-radius:6px'>📁 {_phase or 'General'}</span>"
-        f"<span style='background:#1A1A1A;color:#9B9B9B;font-size:.68rem;padding:2px 8px;border-radius:6px'>📋 {_n_acts} tasks</span>"
-        f"<span style='background:#1AE06B22;color:#1AE06B;font-size:.68rem;padding:2px 8px;border-radius:6px;font-weight:700'>M{_cm_sb} now</span>"
+        f"<div class='proj-card' style='background:#0A0A0A;border-radius:14px;padding:12px 14px;margin-bottom:16px'>"
+        f"<div class='proj-label' style='font-size:.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px'>▶ Working Project</div>"
+        f"<div class='proj-title' style='font-size:.88rem;font-weight:700;line-height:1.3;margin-bottom:8px'>{_aname[:42]}</div>"
+        f"<div style='display:flex;gap:6px;flex-wrap:wrap'>"
+        f"<span class='proj-chip' style='background:#1A1A1A;font-size:.68rem;padding:2px 8px;border-radius:6px'>📁 {_phase or 'General'}</span>"
+        f"<span class='proj-chip' style='background:#1A1A1A;font-size:.68rem;padding:2px 8px;border-radius:6px'>📋 {_n_acts} tasks</span>"
+        f"<span class='proj-chip-g' style='background:#1AE06B22;font-size:.68rem;padding:2px 8px;border-radius:6px;font-weight:700'>M{_cm_sb} now</span>"
         f"</div></div>",
         unsafe_allow_html=True)
 
