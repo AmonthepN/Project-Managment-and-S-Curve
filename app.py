@@ -22,7 +22,32 @@ st.markdown("""
 /* ── Sidebar ── */
 [data-testid="stSidebar"]{background-color:#FFFFFF!important;border-right:1px solid #E0E0E0}
 [data-testid="stSidebar"] *{color:#0A0A0A!important}
-[data-testid="stSidebar"] .stRadio label{font-size:.9rem!important;font-weight:500!important}
+
+/* Nav radio — pill style */
+[data-testid="stSidebar"] .stRadio [data-testid="stWidgetLabel"]{
+  font-size:.7rem!important;font-weight:700!important;color:#9B9B9B!important;
+  letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
+[data-testid="stSidebar"] .stRadio [role="radiogroup"]{gap:1px!important;display:flex;flex-direction:column}
+/* Each option row */
+[data-testid="stSidebar"] .stRadio label{
+  display:flex!important;align-items:center!important;width:100%!important;
+  font-size:.88rem!important;font-weight:500!important;
+  color:#6B6B6B!important;background:transparent!important;
+  border-radius:10px!important;padding:9px 12px!important;
+  cursor:pointer;transition:all .15s;margin:0!important}
+[data-testid="stSidebar"] .stRadio label *{color:#6B6B6B!important}
+/* Hide the actual radio circle */
+[data-testid="stSidebar"] .stRadio input[type="radio"]{display:none!important}
+[data-testid="stSidebar"] div[data-baseweb="radio"] > div:first-child{display:none!important}
+/* Hover */
+[data-testid="stSidebar"] .stRadio label:hover{
+  background:#F0F0F0!important;color:#0A0A0A!important}
+[data-testid="stSidebar"] .stRadio label:hover *{color:#0A0A0A!important}
+/* Selected — :has() is supported Chrome 105+, Safari 15.4+, FF 121+ */
+[data-testid="stSidebar"] .stRadio label:has(input:checked){
+  background:#0A0A0A!important;color:#FFFFFF!important;font-weight:600!important;
+  box-shadow:0 2px 8px rgba(0,0,0,.18)}
+[data-testid="stSidebar"] .stRadio label:has(input:checked) *{color:#FFFFFF!important}
 
 /* ── KPI cards ── */
 .kpi-card{background:#FFFFFF;border-radius:16px;padding:20px 18px;text-align:left;
