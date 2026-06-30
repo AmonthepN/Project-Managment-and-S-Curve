@@ -495,31 +495,49 @@ SCOL={"Completed":"#1AE06B","In Progress":"#0A0A0A","Pending":"#A06000",
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 📈 S-Curve Monitor")
-    st.markdown("---")
-    page=st.radio("Navigate",[
-        "🏠 Dashboard",          # 1. Overview + alerts
-        "📋 Process Guide",      # 2. Read how it works
-        "⚙️ Project Setup",      # 3. Configure + Import WBS
-        "📝 Update Progress",    # 4. Enter actuals
-        "📈 S-Curve",            # 5. Plan vs Actual curve
-        "📅 Gantt",              # 6. Schedule view
-        "📊 EVM Indicators",     # 7. Performance metrics
-    ])
-    st.markdown("---")
-    data=load_data()
-    cm=cur_month(data["start_date"],data["n_months"])
-    st.markdown(f"**📅 Current Month:** M{cm}")
-    st.markdown(f"**🗓️ Today:** {date.today().strftime('%d %b %Y')}")
-    st.markdown("---")
-    # Active project indicator in sidebar
-    _akey = data.get("_db_key","")
-    _aname = data.get("project_name","—")
+    # ── App title ──────────────────────────────────────────────────────────────
     st.markdown(
-        f"<div style='background:#0A0A0A;border-radius:10px;padding:8px 12px;margin-bottom:4px'>"
-        f"<div style='color:#1AE06B;font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase'>▶ Active Project</div>"
-        f"<div style='color:#FFFFFF;font-size:.82rem;margin-top:4px;font-weight:500'>{_aname[:38]}</div>"
-        f"</div>", unsafe_allow_html=True)
+        "<div style='font-size:1.1rem;font-weight:800;color:#0A0A0A;letter-spacing:-.3px;margin-bottom:2px'>"
+        "📈 S-Curve Monitor</div>"
+        "<div style='font-size:.72rem;color:#6B6B6B;margin-bottom:14px'>Project Performance Dashboard</div>",
+        unsafe_allow_html=True)
+
+    # ── Active project card (top of nav) ───────────────────────────────────────
+    _data_sb = load_data()
+    _aname   = _data_sb.get("project_name", "No project loaded")
+    _cm_sb   = cur_month(_data_sb["start_date"], _data_sb["n_months"])
+    _phase   = _data_sb.get("_db_phase", "")
+    _n_acts  = len(_data_sb.get("activities", []))
+    st.markdown(
+        f"<div style='background:#0A0A0A;border-radius:14px;padding:12px 14px;margin-bottom:16px'>"
+        f"<div style='color:#1AE06B;font-size:.62rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px'>▶ Working Project</div>"
+        f"<div style='color:#FFFFFF;font-size:.88rem;font-weight:700;line-height:1.3;margin-bottom:6px'>{_aname[:42]}</div>"
+        f"<div style='display:flex;gap:8px;flex-wrap:wrap'>"
+        f"<span style='background:#1A1A1A;color:#9B9B9B;font-size:.68rem;padding:2px 8px;border-radius:6px'>📁 {_phase or 'General'}</span>"
+        f"<span style='background:#1A1A1A;color:#9B9B9B;font-size:.68rem;padding:2px 8px;border-radius:6px'>📋 {_n_acts} tasks</span>"
+        f"<span style='background:#1AE06B22;color:#1AE06B;font-size:.68rem;padding:2px 8px;border-radius:6px;font-weight:700'>M{_cm_sb} now</span>"
+        f"</div></div>",
+        unsafe_allow_html=True)
+
+    # ── Navigation ─────────────────────────────────────────────────────────────
+    st.markdown("<div style='font-size:.68rem;font-weight:700;color:#6B6B6B;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px'>NAVIGATE</div>", unsafe_allow_html=True)
+    page=st.radio("Navigate",[
+        "🏠 Dashboard",
+        "📋 Process Guide",
+        "⚙️ Project Setup",
+        "📝 Update Progress",
+        "📈 S-Curve",
+        "📅 Gantt",
+        "📊 EVM Indicators",
+    ], label_visibility="collapsed")
+
+    # ── Footer info ────────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown(
+        f"<div style='font-size:.75rem;color:#6B6B6B'>"
+        f"📅 <b style='color:#0A0A0A'>M{_cm_sb}</b> &nbsp;·&nbsp; "
+        f"🗓️ <b style='color:#0A0A0A'>{date.today().strftime('%d %b %Y')}</b></div>",
+        unsafe_allow_html=True)
     st.caption("Ping River Basin • Chiang Mai University © 2026")
 
 data=load_data()
