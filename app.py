@@ -16,31 +16,75 @@ st.set_page_config(page_title="S-Curve Monitor", page_icon="📈",
 
 st.markdown("""
 <style>
-.stApp{background-color:#F5F7FA;color:#1F2937}
-[data-testid="stSidebar"]{background-color:#FFFFFF;border-right:1px solid #E5E7EB}
-[data-testid="stSidebar"] *{color:#374151!important}
-.kpi-card{background:#FFFFFF;border-radius:12px;padding:18px 16px;text-align:center;margin:4px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-.kpi-num{font-size:2.2rem;font-weight:700;color:#2563EB}
-.kpi-label{font-size:.75rem;color:#6B7280;letter-spacing:1px;margin-top:4px}
-.st-done{background:#DCFCE7;color:#15803D;padding:3px 10px;border-radius:20px;font-size:.82rem;font-weight:600}
-.st-prog{background:#DBEAFE;color:#1D4ED8;padding:3px 10px;border-radius:20px;font-size:.82rem;font-weight:600}
-.st-pend{background:#FEF9C3;color:#B45309;padding:3px 10px;border-radius:20px;font-size:.82rem;font-weight:600}
-.st-delay{background:#FEE2E2;color:#DC2626;padding:3px 10px;border-radius:20px;font-size:.82rem;font-weight:600}
-.st-none{background:#F3F4F6;color:#6B7280;padding:3px 10px;border-radius:20px;font-size:.82rem;font-weight:600}
-.sec{font-size:1.05rem;font-weight:700;color:#15803D;letter-spacing:2px;border-bottom:2px solid #D1FAE5;padding-bottom:6px;margin:20px 0 12px 0}
-.stButton>button{background:#2563EB;color:#FFFFFF;font-weight:700;border:none;border-radius:8px;padding:8px 24px}
-.stButton>button:hover{background:#1D4ED8}
-div[data-testid="stMetricValue"]{color:#2563EB!important;font-size:1.8rem!important}
-div[data-testid="stMetricLabel"]{color:#6B7280!important}
+/* ── Base layout ── */
+.stApp{background-color:#EFEFEF!important;color:#0A0A0A;font-family:'Inter',sans-serif}
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"]{background-color:#FFFFFF!important;border-right:1px solid #E0E0E0}
+[data-testid="stSidebar"] *{color:#0A0A0A!important}
+[data-testid="stSidebar"] .stRadio label{font-size:.9rem!important;font-weight:500!important}
+
+/* ── KPI cards ── */
+.kpi-card{background:#FFFFFF;border-radius:16px;padding:20px 18px;text-align:left;
+  margin:4px 0;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:box-shadow .2s}
+.kpi-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.10)}
+.kpi-num{font-size:2.4rem;font-weight:800;color:#0A0A0A;letter-spacing:-1px;line-height:1.1}
+.kpi-num sup{font-size:1rem;font-weight:600;color:#6B6B6B}
+.kpi-label{font-size:.72rem;color:#6B6B6B;letter-spacing:.5px;margin-top:6px;font-weight:500;text-transform:uppercase}
+.kpi-green{color:#1AE06B!important}
+
+/* ── Status badges ── */
+.st-done{background:#E8FBF0;color:#0B9B41;padding:3px 12px;border-radius:20px;font-size:.8rem;font-weight:600}
+.st-prog{background:#E8F8FF;color:#0070B8;padding:3px 12px;border-radius:20px;font-size:.8rem;font-weight:600}
+.st-pend{background:#FFF8E6;color:#A06000;padding:3px 12px;border-radius:20px;font-size:.8rem;font-weight:600}
+.st-delay{background:#FFF0F0;color:#CC2222;padding:3px 12px;border-radius:20px;font-size:.8rem;font-weight:600}
+.st-none{background:#F2F2F2;color:#6B6B6B;padding:3px 12px;border-radius:20px;font-size:.8rem;font-weight:600}
+
+/* ── Section headers ── */
+.sec{font-size:.72rem;font-weight:700;color:#6B6B6B;letter-spacing:2px;text-transform:uppercase;
+  border-bottom:1.5px solid #E0E0E0;padding-bottom:8px;margin:24px 0 14px 0}
+
+/* ── Buttons ── */
+.stButton>button{background:#0A0A0A!important;color:#FFFFFF!important;font-weight:600;
+  border:none;border-radius:10px;padding:9px 22px;font-size:.88rem;transition:background .2s}
+.stButton>button:hover{background:#1AE06B!important;color:#0A0A0A!important}
+.stButton>button[kind="secondary"]{background:#FFFFFF!important;color:#0A0A0A!important;
+  border:1.5px solid #E0E0E0!important}
+.stButton>button[kind="secondary"]:hover{border-color:#1AE06B!important;color:#0B9B41!important}
+
+/* ── Metrics ── */
+div[data-testid="stMetricValue"]{color:#0A0A0A!important;font-size:1.7rem!important;font-weight:800!important}
+div[data-testid="stMetricLabel"]{color:#6B6B6B!important;font-size:.75rem!important;text-transform:uppercase;letter-spacing:.5px}
+div[data-testid="stMetricDelta"]{font-size:.8rem!important}
+
+/* ── Widget labels ── */
 [data-testid="stWidgetLabel"],label,.stTextInput label,.stSelectbox label,.stNumberInput label,
 .stTextArea label,.stDateInput label,.stFileUploader label,.stCheckbox label,.stRadio label,
-.stSlider label,.stMultiSelect label{color:#374151!important;font-weight:600!important}
-[data-testid="stExpander"] summary,[data-testid="stExpander"] summary *{color:#1F2937!important}
-[data-testid="stTabs"] [data-testid="stMarkdownContainer"] p{color:#374151}
-.stDataFrame thead th{background:#F3F4F6!important;color:#1F2937!important}
-input,textarea,select{color:#1F2937!important;background:#FFFFFF!important}
-[data-testid="stSelectbox"] div,[data-testid="stMultiSelect"] div{color:#1F2937!important}
-p,li,span:not([class]){color:#1F2937}
+.stSlider label,.stMultiSelect label{color:#0A0A0A!important;font-weight:600!important;font-size:.85rem!important}
+
+/* ── Expanders ── */
+[data-testid="stExpander"]{background:#FFFFFF;border-radius:12px;border:1px solid #E0E0E0!important;margin-bottom:6px}
+[data-testid="stExpander"] summary{font-weight:600!important;color:#0A0A0A!important}
+
+/* ── Tabs ── */
+[data-testid="stTabs"] [role="tab"]{font-weight:600;color:#6B6B6B}
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{color:#0A0A0A;border-bottom-color:#1AE06B!important}
+
+/* ── Data editor / tables ── */
+.stDataFrame thead th{background:#F2F2F2!important;color:#0A0A0A!important;font-weight:700!important}
+.stDataFrame{border-radius:12px;overflow:hidden}
+
+/* ── Inputs ── */
+input,textarea,select{color:#0A0A0A!important;background:#FFFFFF!important;border-radius:8px!important}
+[data-testid="stSelectbox"] div,[data-testid="stMultiSelect"] div{color:#0A0A0A!important}
+
+/* ── Text ── */
+p,li,h1,h2,h3,h4,h5{color:#0A0A0A}
+small,caption{color:#6B6B6B}
+code{background:#F2F2F2;color:#0A0A0A;border-radius:4px;padding:1px 5px}
+
+/* ── Info/success/warning boxes ── */
+[data-testid="stAlert"]{border-radius:12px!important;border:none!important}
 </style>""", unsafe_allow_html=True)
 
 # ── Project Database (SQLite) ─────────────────────────────────────────────────
@@ -403,8 +447,8 @@ SCLS={"Completed":"st-done","In Progress":"st-prog","Pending":"st-pend",
       "Delayed":"st-delay","Not Started":"st-none"}
 SMAP={"Completed":"✅ Completed","In Progress":"🚧 In Progress","Pending":"⏳ Pending",
       "Delayed":"💤 Delayed","Not Started":"❌ Not Started","Cancelled":"🚫 Cancelled"}
-SCOL={"Completed":"#16A34A","In Progress":"#2563EB","Pending":"#D97706",
-      "Delayed":"#DC2626","Not Started":"#9CA3AF"}
+SCOL={"Completed":"#1AE06B","In Progress":"#0A0A0A","Pending":"#A06000",
+      "Delayed":"#CC2222","Not Started":"#C0C0C0"}
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -429,9 +473,9 @@ with st.sidebar:
     _akey = data.get("_db_key","")
     _aname = data.get("project_name","—")
     st.markdown(
-        f"<div style='background:#DCFCE7;border-radius:6px;padding:7px 10px;margin-bottom:4px;border:1px solid #BBF7D0'>"
-        f"<div style='color:#15803D;font-size:.7rem;font-weight:700;letter-spacing:1px'>▶ ACTIVE PROJECT</div>"
-        f"<div style='color:#1F2937;font-size:.8rem;margin-top:3px'>{_aname[:38]}</div>"
+        f"<div style='background:#0A0A0A;border-radius:10px;padding:8px 12px;margin-bottom:4px'>"
+        f"<div style='color:#1AE06B;font-size:.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase'>▶ Active Project</div>"
+        f"<div style='color:#FFFFFF;font-size:.82rem;margin-top:4px;font-weight:500'>{_aname[:38]}</div>"
         f"</div>", unsafe_allow_html=True)
     st.caption("Ping River Basin • Chiang Mai University © 2026")
 
@@ -457,17 +501,21 @@ if page=="🏠 Dashboard":
 
     c1,c2,c3,c4,c5,c6=st.columns(6)
     cards=[
-        (c1,str(total),"TOTAL TASKS","#FFFFFF","#2563EB"),
-        (c2,str(done),"✅ COMPLETED","#F0FDF4","#16A34A"),
-        (c3,str(prog),"🚧 IN PROGRESS","#EFF6FF","#1D4ED8"),
-        (c4,str(delay),"💤 DELAYED","#FFF1F2","#DC2626"),
-        (c5,f"{spi:.2f}" if spi else "—","SPI","#FFFFFF",
-         "#16A34A" if spi and spi>=1 else "#D97706" if spi and spi>=0.8 else "#DC2626"),
-        (c6,f"{sv:+.1f}%" if sv is not None else "—","SCHEDULE VAR.","#FFFFFF",
-         "#16A34A" if sv and sv>=0 else "#DC2626"),
+        (c1,str(total),"Total Tasks","●","#0A0A0A"),
+        (c2,str(done),"Completed","●","#1AE06B"),
+        (c3,str(prog),"In Progress","●","#0070B8"),
+        (c4,str(delay),"Delayed","●","#CC2222"),
+        (c5,f"{spi:.2f}" if spi else "—","SPI Index","●",
+         "#1AE06B" if spi and spi>=1 else "#A06000" if spi and spi>=0.8 else "#CC2222"),
+        (c6,f"{sv:+.1f}%" if sv is not None else "—","Schedule Var.","●",
+         "#1AE06B" if sv and sv>=0 else "#CC2222"),
     ]
-    for col,val,lbl,bg,fg in cards:
-        col.markdown(f'<div class="kpi-card" style="background:{bg}"><div class="kpi-num" style="color:{fg}">{val}</div><div class="kpi-label">{lbl}</div></div>',unsafe_allow_html=True)
+    for col,val,lbl,dot,ac in cards:
+        col.markdown(
+            f'<div class="kpi-card">'
+            f'<div class="kpi-num">{val}<sup style="font-size:.9rem;color:{ac}"> {dot}</sup></div>'
+            f'<div class="kpi-label">{lbl}</div>'
+            f'</div>', unsafe_allow_html=True)
 
     st.markdown("")
     cl,cr=st.columns([2,1])
@@ -475,24 +523,24 @@ if page=="🏠 Dashboard":
         st.markdown('<div class="sec">S - C U R V E    O V E R V I E W</div>',unsafe_allow_html=True)
         fig=go.Figure()
         fig.add_trace(go.Scatter(x=labels,y=cump,name="Plan",fill="tozeroy",
-            fillcolor="rgba(37,99,235,.10)",line=dict(color="#2563EB",width=3),
+            fillcolor="rgba(26,224,107,.12)",line=dict(color="#0A0A0A",width=2.5),
             mode="lines+markers",marker=dict(size=7),
             hovertemplate="<b>%{x}</b><br>Plan: %{y:.1f}%<extra></extra>"))
         ax=[labels[i] for i,v in enumerate(cuma) if v is not None]
         ay=[v for v in cuma if v is not None]
         if ay:
             fig.add_trace(go.Scatter(x=ax,y=ay,name="Actual",fill="tozeroy",
-                fillcolor="rgba(22,163,74,.10)",line=dict(color="#16A34A",width=3),
+                fillcolor="rgba(26,224,107,.18)",line=dict(color="#1AE06B",width=2.5),
                 mode="lines+markers",marker=dict(size=8,symbol="diamond"),
                 hovertemplate="<b>%{x}</b><br>Actual: %{y:.1f}%<extra></extra>"))
         if cm<=N:
-            fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#D97706")
+            fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#1AE06B",line_width=2)
             fig.add_annotation(x=labels[cm-1],y=105,text="TODAY",showarrow=False,
-                font=dict(color="#D97706",size=11),xanchor="left")
-        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#F9FAFB",
-            font_color="#1F2937",height=280,margin=dict(l=10,r=10,t=10,b=10),
-            xaxis=dict(gridcolor="#E5E7EB"),yaxis=dict(gridcolor="#E5E7EB",range=[0,105]),
-            legend=dict(bgcolor="#FFFFFF"),hovermode="x unified")
+                font=dict(color="#0A0A0A",size=11,family="sans-serif"),xanchor="left")
+        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
+            font_color="#0A0A0A",height=280,margin=dict(l=10,r=10,t=10,b=10),
+            xaxis=dict(gridcolor="#F0F0F0",showline=False),yaxis=dict(gridcolor="#F0F0F0",range=[0,105]),
+            legend=dict(bgcolor="#FFFFFF",font=dict(color="#0A0A0A")),hovermode="x unified")
         st.plotly_chart(fig,use_container_width=True)
 
     with cr:
@@ -502,12 +550,12 @@ if page=="🏠 Dashboard":
             sk = next((k for k in SCLS if k in st_raw),"Not Started")
             is_active = a["start_month"] <= cm <= a["end_month"]
             # Highlight border for currently active activities
-            border_style = "border-left:3px solid #D97706;padding-left:6px;" if is_active else "border-left:3px solid #E5E7EB;padding-left:6px;"
-            active_dot = '<span style="color:#D97706;font-size:.7rem;margin-right:3px">●</span>' if is_active else ''
+            border_style = "border-left:3px solid #1AE06B;padding-left:6px;" if is_active else "border-left:3px solid #E8E8E8;padding-left:6px;"
+            active_dot = '<span style="color:#1AE06B;font-size:.7rem;margin-right:3px">●</span>' if is_active else ''
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                f'padding:5px 0;border-bottom:1px solid #E5E7EB;{border_style}">'
-                f'<span style="color:#1F2937;font-size:.82rem">{active_dot}{a["no"]}. {a["name"][:32]}…</span>'
+                f'padding:5px 0;border-bottom:1px solid #F0F0F0;{border_style}">'
+                f'<span style="color:#0A0A0A;font-size:.82rem">{active_dot}{a["no"]}. {a["name"][:32]}…</span>'
                 f'<span class="{SCLS[sk]}">{sk}</span></div>',
                 unsafe_allow_html=True)
 
@@ -522,23 +570,23 @@ if page=="🏠 Dashboard":
             sk = next((k for k in SCLS if k in st_raw),"Not Started")
             actual_cm = float(a.get("actuals",{}).get(str(cm), 0))
             # Health color
-            if "Completed" in st_raw:    hcol, hlbl = "#F0FDF4", "✅ Done"
-            elif "Delayed" in st_raw:    hcol, hlbl = "#FFF1F2", "⚠️ Delayed"
-            elif actual_cm > 0:          hcol, hlbl = "#EFF6FF", "🚧 Active"
-            else:                        hcol, hlbl = "#FFFBEB", "⏳ Needs Input"
+            if "Completed" in st_raw:    ac_col, hlbl = "#1AE06B", "✅ Done"
+            elif "Delayed" in st_raw:    ac_col, hlbl = "#CC2222", "⚠️ Delayed"
+            elif actual_cm > 0:          ac_col, hlbl = "#0A0A0A", "🚧 Active"
+            else:                        ac_col, hlbl = "#A06000", "⏳ Needs Input"
             col = cols_h[idx % 3]
             col.markdown(f"""
-<div style="background:{hcol};border:1px solid #D97706;border-radius:10px;padding:12px 14px;margin:4px 0">
-  <div style="color:#B45309;font-size:.72rem;font-weight:700;letter-spacing:1px">{a['no']} &nbsp;·&nbsp; Wt {a['weight']}%</div>
-  <div style="color:#1F2937;font-size:.88rem;font-weight:600;margin:4px 0">{a['name'][:50]}</div>
-  <div style="display:flex;justify-content:space-between;margin-top:6px">
-    <span style="color:#6B7280;font-size:.78rem">M{a['start_month']}→M{a['end_month']}</span>
-    <span style="color:#15803D;font-size:.78rem;font-weight:600">{hlbl}</span>
+<div style="background:#FFFFFF;border:none;border-radius:16px;padding:14px 16px;margin:4px 0;box-shadow:0 2px 8px rgba(0,0,0,.07)">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span style="color:#6B6B6B;font-size:.68rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Activity {a['no']} · Wt {a['weight']}%</span>
+    <span style="background:{ac_col};color:#fff;font-size:.68rem;font-weight:700;padding:2px 9px;border-radius:20px">{hlbl}</span>
   </div>
-  <div style="background:#E5E7EB;border-radius:4px;height:6px;margin-top:6px">
-    <div style="background:#D97706;height:6px;border-radius:4px;width:{min(actual_cm,100):.0f}%"></div>
+  <div style="color:#0A0A0A;font-size:.9rem;font-weight:700;margin:8px 0 4px">{a['name'][:50]}</div>
+  <div style="color:#6B6B6B;font-size:.75rem;margin-bottom:8px">M{a['start_month']} → M{a['end_month']}</div>
+  <div style="background:#EFEFEF;border-radius:6px;height:5px">
+    <div style="background:{ac_col};height:5px;border-radius:6px;width:{min(actual_cm,100):.0f}%"></div>
   </div>
-  <div style="color:#6B7280;font-size:.72rem;margin-top:2px">M{cm} actual: {actual_cm:.0f}%</div>
+  <div style="color:#6B6B6B;font-size:.7rem;margin-top:4px">M{cm} actual: {actual_cm:.0f}%</div>
 </div>""", unsafe_allow_html=True)
 
     st.markdown("---")
@@ -557,25 +605,25 @@ elif page=="📈 S-Curve":
     st.markdown("---")
     fig=go.Figure()
     fig.add_trace(go.Scatter(x=labels,y=cump,name="Planned (%)",fill="tozeroy",
-        fillcolor="rgba(37,99,235,.10)",line=dict(color="#2563EB",width=3),
+        fillcolor="rgba(26,224,107,.12)",line=dict(color="#0A0A0A",width=2.5),
         mode="lines+markers",marker=dict(size=8),
         hovertemplate="<b>%{x}</b><br>Plan: %{y:.1f}%<extra></extra>"))
     ax=[labels[i] for i,v in enumerate(cuma) if v is not None]
     ay=[v for v in cuma if v is not None]
     if ay:
         fig.add_trace(go.Scatter(x=ax,y=ay,name="Actual (%)",fill="tozeroy",
-            fillcolor="rgba(22,163,74,.10)",line=dict(color="#16A34A",width=3),
+            fillcolor="rgba(26,224,107,.18)",line=dict(color="#1AE06B",width=2.5),
             mode="lines+markers",marker=dict(size=9,symbol="diamond"),
             hovertemplate="<b>%{x}</b><br>Actual: %{y:.1f}%<extra></extra>"))
     if cm<=N:
         fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#D97706")
         fig.add_annotation(x=labels[cm-1],y=105,text=f"M{cm} TODAY",showarrow=False,
             font=dict(color="#D97706",size=11),xanchor="left")
-    fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#F9FAFB",
-        font=dict(color="#1F2937",size=13),height=460,margin=dict(l=20,r=20,t=30,b=20),
-        xaxis=dict(title="Month",gridcolor="#E5E7EB",tickangle=-30),
-        yaxis=dict(title="Cumulative Progress (%)",gridcolor="#E5E7EB",range=[0,105],ticksuffix="%"),
-        legend=dict(bgcolor="#FFFFFF",bordercolor="#2563EB",borderwidth=1),hovermode="x unified")
+    fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
+        font=dict(color="#0A0A0A",size=13),height=460,margin=dict(l=20,r=20,t=30,b=20),
+        xaxis=dict(title="Month",gridcolor="#F0F0F0",tickangle=-30,showline=False),
+        yaxis=dict(title="Cumulative Progress (%)",gridcolor="#F0F0F0",range=[0,105],ticksuffix="%"),
+        legend=dict(bgcolor="#FFFFFF",bordercolor="#E0E0E0",borderwidth=1),hovermode="x unified")
     st.plotly_chart(fig,use_container_width=True)
 
     rows=[]
@@ -606,12 +654,12 @@ elif page=="📅 Gantt":
         fig=px.timeline(df,x_start="Start",x_end="Finish",y="Task",color="Status",
                         color_discrete_map=SCOL,hover_data=["Weight"])
         fig.update_yaxes(autorange="reversed")
-        fig.add_vline(x=date.today().isoformat(),line_dash="dash",line_color="#D97706")
+        fig.add_vline(x=date.today().isoformat(),line_dash="dash",line_color="#1AE06B",line_width=2)
         fig.add_annotation(x=date.today().isoformat(),y=1.02,yref="paper",
-            text="TODAY",showarrow=False,font=dict(color="#D97706",size=11),xanchor="left")
-        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#F9FAFB",
-            font=dict(color="#1F2937",size=11),height=420,margin=dict(l=10,r=10,t=20,b=10),
-            xaxis=dict(gridcolor="#E5E7EB"),yaxis=dict(gridcolor="#E5E7EB"),legend=dict(bgcolor="#FFFFFF"))
+            text="TODAY",showarrow=False,font=dict(color="#0A0A0A",size=11),xanchor="left")
+        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A",size=11),height=420,margin=dict(l=10,r=10,t=20,b=10),
+            xaxis=dict(gridcolor="#F0F0F0",showline=False),yaxis=dict(gridcolor="#F0F0F0"),legend=dict(bgcolor="#FFFFFF"))
         st.plotly_chart(fig,use_container_width=True)
     else:
         st.info("No activities yet. Add them in ⚙️ Project Setup.")
@@ -661,20 +709,20 @@ elif page=="📊 EVM Indicators":
     xs=[labels[i] for i,v in enumerate(spi_v) if v is not None]; ys=[v for v in spi_v if v is not None]
     if ys:
         fig=go.Figure()
-        fig.add_hline(y=1.0,line_color="#2563EB")
+        fig.add_hline(y=1.0,line_color="#1AE06B",line_width=2)
         fig.add_annotation(x=1,xref="paper",y=1.0,text="Target SPI=1.0",showarrow=False,
-            font=dict(color="#2563EB",size=10),xanchor="right",yanchor="bottom")
-        fig.add_hline(y=0.95,line_dash="dot",line_color="#D97706")
+            font=dict(color="#0A0A0A",size=10),xanchor="right",yanchor="bottom")
+        fig.add_hline(y=0.95,line_dash="dot",line_color="#A06000")
         fig.add_annotation(x=1,xref="paper",y=0.95,text="⚠️ Warning",showarrow=False,
-            font=dict(color="#D97706",size=10),xanchor="right",yanchor="bottom")
-        fig.add_hline(y=0.80,line_dash="dot",line_color="#DC2626")
+            font=dict(color="#A06000",size=10),xanchor="right",yanchor="bottom")
+        fig.add_hline(y=0.80,line_dash="dot",line_color="#CC2222")
         fig.add_annotation(x=1,xref="paper",y=0.80,text="🔴 Critical",showarrow=False,
-            font=dict(color="#DC2626",size=10),xanchor="right",yanchor="bottom")
-        fig.add_trace(go.Scatter(x=xs,y=ys,name="SPI",line=dict(color="#16A34A",width=3),
-            mode="lines+markers",marker=dict(size=8,color=["#16A34A" if v>=1 else "#D97706" if v>=0.8 else "#DC2626" for v in ys])))
-        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#F9FAFB",font=dict(color="#1F2937"),
+            font=dict(color="#CC2222",size=10),xanchor="right",yanchor="bottom")
+        fig.add_trace(go.Scatter(x=xs,y=ys,name="SPI",line=dict(color="#0A0A0A",width=2.5),
+            mode="lines+markers",marker=dict(size=8,color=["#1AE06B" if v>=1 else "#A06000" if v>=0.8 else "#CC2222" for v in ys])))
+        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",font=dict(color="#0A0A0A"),
             height=260,margin=dict(l=10,r=10,t=10,b=10),showlegend=False,
-            xaxis=dict(gridcolor="#E5E7EB"),yaxis=dict(gridcolor="#E5E7EB",title="SPI"))
+            xaxis=dict(gridcolor="#F0F0F0",showline=False),yaxis=dict(gridcolor="#F0F0F0",title="SPI"))
         st.plotly_chart(fig,use_container_width=True)
 
 # ── UPDATE PROGRESS ───────────────────────────────────────────────────────────
@@ -864,11 +912,11 @@ elif page=="⚙️ Project Setup":
             active_entry = next((e for e in entries if e["key"] == active_key), None)
             if active_entry:
                 st.markdown(
-                    f"<div style='background:#DCFCE7;border:1px solid #86EFAC;border-radius:8px;"
-                    f"padding:8px 14px;margin-bottom:10px;display:flex;align-items:center;gap:10px'>"
-                    f"<span style='color:#15803D;font-size:1rem'>▶ Active:</span>"
-                    f"<span style='color:#1F2937;font-weight:600'>{active_entry['project_name']}</span>"
-                    f"<span style='color:#6B7280;font-size:.8rem'>({active_entry['doc']} / {active_entry['phase']} · "
+                    f"<div style='background:#0A0A0A;border-radius:12px;"
+                    f"padding:10px 16px;margin-bottom:10px;display:flex;align-items:center;gap:10px'>"
+                    f"<span style='color:#1AE06B;font-size:.8rem;font-weight:700'>▶ ACTIVE</span>"
+                    f"<span style='color:#FFFFFF;font-weight:600'>{active_entry['project_name']}</span>"
+                    f"<span style='color:#9B9B9B;font-size:.8rem'>({active_entry['doc']} / {active_entry['phase']} · "
                     f"{active_entry['n_activities']} tasks)</span></div>",
                     unsafe_allow_html=True)
 
@@ -881,8 +929,8 @@ elif page=="⚙️ Project Setup":
                 is_active = e["key"] == active_key
 
                 # Row highlight for active project
-                row_bg  = "background:#F0FDF4;border:1px solid #86EFAC;border-radius:8px;padding:4px 8px;margin-bottom:2px" if is_active else ""
-                active_badge = "&nbsp;<span style='background:#16A34A;color:#FFFFFF;font-size:.7rem;font-weight:700;padding:2px 7px;border-radius:10px'>● IN USE</span>" if is_active else ""
+                row_bg  = "background:#FFFFFF;border:1.5px solid #1AE06B;border-radius:12px;padding:4px 8px;margin-bottom:2px" if is_active else ""
+                active_badge = "&nbsp;<span style='background:#0A0A0A;color:#1AE06B;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px'>● IN USE</span>" if is_active else ""
 
                 if row_bg:
                     st.markdown(f"<div style='{row_bg}'>", unsafe_allow_html=True)
@@ -1379,20 +1427,20 @@ elif page=="📋 Process Guide":
     # ── PIPELINE OVERVIEW ────────────────────────────────────────────────────
     st.markdown("## 🔄 Full Pipeline Overview")
     st.markdown("""
-<div style="background:#F3F4F6;border:1px solid #E5E7EB;border-radius:12px;padding:20px 24px;font-family:monospace;font-size:.9rem;line-height:2.2">
-<span style="color:#B45309;font-weight:700">STEP 1</span> &nbsp;📄 <span style="color:#15803D">Project Proposal Document</span> &nbsp;(.docx / .pdf)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-<span style="color:#B45309;font-weight:700">STEP 2</span> &nbsp;🤖 <span style="color:#15803D">AI Extraction</span> &nbsp;(Claude / ChatGPT + WBS Prompt)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-<span style="color:#B45309;font-weight:700">STEP 3</span> &nbsp;📊 <span style="color:#15803D">heymorning_task_import.csv</span> &nbsp;(WBS data table)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-<span style="color:#B45309;font-weight:700">STEP 4</span> &nbsp;⚙️ <span style="color:#15803D">wbs_extractor.py</span> &nbsp;(auto-split by sub-project)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-<span style="color:#B45309;font-weight:700">STEP 5</span> &nbsp;📁 <span style="color:#15803D">projects/*.json</span> &nbsp;(20 pre-built project files)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-<span style="color:#B45309;font-weight:700">STEP 6</span> &nbsp;📥 <span style="color:#15803D">Import WBS → Project Library</span> &nbsp;(one-click load)<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>
-<span style="color:#B45309;font-weight:700">STEP 7</span> &nbsp;📈 <span style="color:#2563EB">Dashboard / S-Curve / Gantt / EVM</span> &nbsp;✅ Live
+<div style="background:#0A0A0A;border-radius:16px;padding:22px 26px;font-family:monospace;font-size:.9rem;line-height:2.4">
+<span style="color:#1AE06B;font-weight:700">STEP 1</span> &nbsp;📄 <span style="color:#FFFFFF">Project Proposal Document</span> &nbsp;<span style="color:#6B6B6B">(.docx / .pdf)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#1AE06B">↓</span><br>
+<span style="color:#1AE06B;font-weight:700">STEP 2</span> &nbsp;🤖 <span style="color:#FFFFFF">AI Extraction</span> &nbsp;<span style="color:#6B6B6B">(Claude / ChatGPT + WBS Prompt)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#1AE06B">↓</span><br>
+<span style="color:#1AE06B;font-weight:700">STEP 3</span> &nbsp;📊 <span style="color:#FFFFFF">heymorning_task_import.csv</span> &nbsp;<span style="color:#6B6B6B">(WBS data table)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#1AE06B">↓</span><br>
+<span style="color:#1AE06B;font-weight:700">STEP 4</span> &nbsp;⚙️ <span style="color:#FFFFFF">wbs_extractor.py</span> &nbsp;<span style="color:#6B6B6B">(auto-split by sub-project)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#1AE06B">↓</span><br>
+<span style="color:#1AE06B;font-weight:700">STEP 5</span> &nbsp;📁 <span style="color:#FFFFFF">projects/*.json</span> &nbsp;<span style="color:#6B6B6B">(20 pre-built project files)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#1AE06B">↓</span><br>
+<span style="color:#1AE06B;font-weight:700">STEP 6</span> &nbsp;📥 <span style="color:#FFFFFF">Import WBS → Project Library</span> &nbsp;<span style="color:#6B6B6B">(one-click load)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#1AE06B">↓</span><br>
+<span style="color:#1AE06B;font-weight:700">STEP 7</span> &nbsp;📈 <span style="color:#1AE06B;font-weight:700">Dashboard / S-Curve / Gantt / EVM</span> &nbsp;✅ Live
 </div>
 """, unsafe_allow_html=True)
 
@@ -1462,9 +1510,9 @@ elif page=="📋 Process Guide":
 
         # Instruction banner + action buttons
         st.markdown("""
-<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:14px 20px;margin-bottom:12px">
-<b style="color:#1D4ED8;font-size:1.05rem">📋 How to use this prompt</b><br>
-<span style="color:#1F2937;font-size:.9rem">
+<div style="background:#FFFFFF;border:1.5px solid #E0E0E0;border-radius:14px;padding:14px 20px;margin-bottom:12px">
+<b style="color:#0A0A0A;font-size:1.05rem">📋 How to use this prompt</b><br>
+<span style="color:#3B3B3B;font-size:.9rem">
 1. Click <b>⬇️ Download Prompt</b> (save to your computer) <b>OR</b> select all text below and copy<br>
 2. Open <b>claude.ai</b> or <b>chatgpt.com</b> → start a new conversation<br>
 3. Paste the prompt, then <b>attach your project proposal (.docx / .pdf)</b><br>
