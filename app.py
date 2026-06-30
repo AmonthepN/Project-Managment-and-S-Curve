@@ -554,6 +554,7 @@ with st.sidebar:
         "📈 S-Curve",
         "📅 Gantt",
         "📊 EVM Indicators",
+        "💰 Budget & Cost",
     ], label_visibility="collapsed")
 
     # ── Footer info ────────────────────────────────────────────────────────────
@@ -810,6 +811,180 @@ elif page=="📊 EVM Indicators":
             height=260,margin=dict(l=10,r=10,t=10,b=10),showlegend=False,
             xaxis=dict(gridcolor="#F0F0F0",showline=False),yaxis=dict(gridcolor="#F0F0F0",title="SPI"))
         st.plotly_chart(fig,use_container_width=True)
+
+# ── BUDGET & COST ─────────────────────────────────────────────────────────────
+elif page=="💰 Budget & Cost":
+    st.markdown("# 💰 Budget & Cost Control")
+    st.markdown("---")
+    if not acts:
+        st.info("Add activities first in ⚙️ Project Setup."); st.stop()
+
+    budget     = data.get("total_budget", 0)
+    wbs_cost   = sum(a.get("planned_cost", 0) for a in acts)
+    variance   = budget - wbs_cost
+    ev_pct     = cuma[cm-1] if cm <= N and cuma[cm-1] is not None else 0.0
+    pv_pct     = cump[cm-1] if cm <= N else 0.0
+    ev_cost    = budget * ev_pct / 100
+    pv_cost    = budget * pv_pct / 100
+    cv_cost    = ev_cost - pv_cost
+    pct_used   = round(wbs_cost / budget * 100, 1) if budget > 0 else 0
+
+    # ── KPI row ───────────────────────────────────────────────────────────────
+    k1,k2,k3,k4,k5 = st.columns(5)
+    def _kpi(col, val, lbl, ac="#0A0A0A"):
+        col.markdown(
+            f'<div class="kpi-card"><div class="kpi-num" style="color:{ac}">{val}</div>'
+            f'<div class="kpi-label">{lbl}</div></div>', unsafe_allow_html=True)
+
+    _kpi(k1, f"฿{budget:,.0f}",   "Contract Budget")
+    _kpi(k2, f"฿{wbs_cost:,.0f}", "WBS Planned Cost",
+         "#1AE06B" if wbs_cost <= budget else "#CC2222")
+    _kpi(k3, f"฿{variance:+,.0f}", "Budget Surplus / Gap",
+         "#1AE06B" if variance >= 0 else "#CC2222")
+    _kpi(k4, f"฿{pv_cost:,.0f}",  f"PV Cost (M{cm})")
+    _kpi(k5, f"฿{ev_cost:,.0f}",  f"EV Cost (M{cm})",
+         "#1AE06B" if cv_cost >= 0 else "#CC2222")
+
+    st.markdown("")
+
+    # ── Budget utilisation bar ─────────────────────────────────────────────────
+    bar_col = "#1AE06B" if pct_used <= 100 else "#CC2222"
+    st.markdown(
+        f'<div style="background:#FFFFFF;border-radius:16px;padding:16px 20px;'
+        f'box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:16px">'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:8px">'
+        f'<span style="font-weight:700;color:#0A0A0A">WBS Cost vs Contract Budget</span>'
+        f'<span style="font-weight:800;font-size:1.1rem;color:{bar_col}">{pct_used}%</span></div>'
+        f'<div style="background:#EFEFEF;border-radius:8px;height:10px">'
+        f'<div style="background:{bar_col};height:10px;border-radius:8px;width:{min(pct_used,100):.1f}%"></div></div>'
+        f'<div style="display:flex;justify-content:space-between;margin-top:6px">'
+        f'<span style="font-size:.75rem;color:#6B6B6B">฿0</span>'
+        f'<span style="font-size:.75rem;color:#6B6B6B">฿{budget:,.0f}</span></div>'
+        f'</div>', unsafe_allow_html=True)
+
+    # ── Two-column charts ──────────────────────────────────────────────────────
+    cl, cr = st.columns([3, 2])
+
+    with cl:
+        st.markdown('<div class="sec">COST PER ACTIVITY</div>', unsafe_allow_html=True)
+        act_names  = [f"{a['no']}. {a['name'][:30]}" for a in acts if a.get("planned_cost",0)>0]
+        act_costs  = [a["planned_cost"] for a in acts if a.get("planned_cost",0)>0]
+        if act_costs:
+            colors_bar = ["#1AE06B" if c <= budget/len(acts)*1.5 else "#A06000" for c in act_costs]
+            fig_bar = go.Figure(go.Bar(
+                x=act_costs, y=act_names, orientation="h",
+                marker_color=colors_bar,
+                text=[f"฿{v:,.0f}" for v in act_costs],
+                textposition="outside", textfont=dict(size=11, color="#0A0A0A"),
+                hovertemplate="<b>%{y}</b><br>฿%{x:,.0f}<extra></extra>"))
+            fig_bar.update_layout(
+                paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+                font=dict(color="#0A0A0A", size=11),
+                height=max(280, len(act_costs)*38),
+                margin=dict(l=10, r=80, t=10, b=10),
+                xaxis=dict(gridcolor="#F0F0F0", showline=False, tickprefix="฿",
+                           tickformat=",.0f"),
+                yaxis=dict(gridcolor="#F0F0F0", autorange="reversed"))
+            st.plotly_chart(fig_bar, use_container_width=True)
+        else:
+            st.info("No planned costs set. Add them in ⚙️ Project Setup → Activities tab.")
+
+    with cr:
+        st.markdown('<div class="sec">BUDGET SHARE</div>', unsafe_allow_html=True)
+        pie_names = [f"{a['no']}. {a['name'][:20]}" for a in acts if a.get("planned_cost",0)>0]
+        pie_vals  = [a["planned_cost"] for a in acts if a.get("planned_cost",0)>0]
+        if pie_vals:
+            palette = ["#1AE06B","#0A0A0A","#A06000","#0070B8","#CC2222",
+                       "#6B6B6B","#1AE06B88","#0A0A0A88","#A0600088"]
+            fig_pie = go.Figure(go.Pie(
+                labels=pie_names, values=pie_vals,
+                marker=dict(colors=palette[:len(pie_vals)],
+                            line=dict(color="#FFFFFF", width=2)),
+                hole=0.45,
+                textinfo="percent",
+                hovertemplate="<b>%{label}</b><br>฿%{value:,.0f} (%{percent})<extra></extra>"))
+            fig_pie.add_annotation(text=f"<b>฿{wbs_cost/1e6:.1f}M</b><br><span style='font-size:10px'>Total WBS</span>",
+                x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="#0A0A0A"),
+                align="center")
+            fig_pie.update_layout(
+                paper_bgcolor="#FFFFFF", font=dict(color="#0A0A0A", size=11),
+                height=320, margin=dict(l=10, r=10, t=10, b=10),
+                legend=dict(bgcolor="#FFFFFF", font=dict(size=10),
+                            orientation="v", x=1.02, y=0.5))
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    # ── Monthly planned spend & burn-down ─────────────────────────────────────
+    st.markdown('<div class="sec">MONTHLY PLANNED SPEND & BUDGET BURN-DOWN</div>',
+                unsafe_allow_html=True)
+
+    monthly_spend = [0.0] * N
+    for a in acts:
+        cost = a.get("planned_cost", 0)
+        if cost <= 0: continue
+        span = a["end_month"] - a["start_month"] + 1
+        per_month = cost / span
+        for m in range(a["start_month"], a["end_month"]+1):
+            if 1 <= m <= N:
+                monthly_spend[m-1] += per_month
+
+    cum_spend   = []
+    running = 0
+    for v in monthly_spend:
+        running += v
+        cum_spend.append(running)
+    burn_down = [budget - c for c in cum_spend]
+
+    fig_sp = go.Figure()
+    fig_sp.add_trace(go.Bar(
+        x=labels, y=monthly_spend, name="Monthly Spend",
+        marker_color="#0A0A0A",
+        hovertemplate="<b>%{x}</b><br>฿%{y:,.0f}<extra></extra>"))
+    fig_sp.add_trace(go.Scatter(
+        x=labels, y=burn_down, name="Remaining Budget",
+        line=dict(color="#1AE06B", width=2.5),
+        mode="lines+markers", marker=dict(size=7),
+        yaxis="y2",
+        hovertemplate="<b>%{x}</b><br>Remaining: ฿%{y:,.0f}<extra></extra>"))
+    if cm <= N:
+        fig_sp.add_vline(x=labels[cm-1], line_dash="dash",
+                         line_color="#1AE06B", line_width=1.5)
+        fig_sp.add_annotation(x=labels[cm-1], y=1, yref="paper",
+            text="NOW", showarrow=False,
+            font=dict(color="#0A0A0A", size=10), xanchor="left")
+    fig_sp.add_hline(y=0, line_color="#CC2222", line_dash="dot",
+                     annotation_text="Budget exhausted",
+                     annotation_font_color="#CC2222",
+                     annotation_position="top right",
+                     secondary_y=True)
+    fig_sp.update_layout(
+        paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+        font=dict(color="#0A0A0A", size=12),
+        height=340, margin=dict(l=20, r=20, t=20, b=20),
+        hovermode="x unified",
+        legend=dict(bgcolor="#FFFFFF", bordercolor="#E0E0E0", borderwidth=1),
+        xaxis=dict(gridcolor="#F0F0F0", showline=False, tickangle=-30),
+        yaxis=dict(title="Monthly Spend (฿)", gridcolor="#F0F0F0",
+                   tickprefix="฿", tickformat=",.0f"),
+        yaxis2=dict(title="Remaining Budget (฿)", overlaying="y", side="right",
+                    tickprefix="฿", tickformat=",.0f",
+                    gridcolor="#F0F0F0", showgrid=False))
+    st.plotly_chart(fig_sp, use_container_width=True)
+
+    # ── Detail table ──────────────────────────────────────────────────────────
+    st.markdown('<div class="sec">ACTIVITY COST DETAIL</div>', unsafe_allow_html=True)
+    cost_rows = []
+    for a in acts:
+        pc = a.get("planned_cost", 0)
+        share = round(pc / wbs_cost * 100, 1) if wbs_cost > 0 else 0
+        cost_rows.append({
+            "No": a["no"], "Activity": a["name"][:50],
+            "Start": f"M{a['start_month']}", "End": f"M{a['end_month']}",
+            "Weight (%)": a["weight"],
+            "Planned Cost (฿)": f"฿{pc:,.0f}",
+            "Share (%)": f"{share}%",
+            "Status": a.get("status","Not Started")
+        })
+    st.dataframe(pd.DataFrame(cost_rows), use_container_width=True, hide_index=True)
 
 # ── UPDATE PROGRESS ───────────────────────────────────────────────────────────
 elif page=="📝 Update Progress":
