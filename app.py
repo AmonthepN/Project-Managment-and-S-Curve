@@ -242,6 +242,154 @@ def compute(data):
         ca+=am[i]; cuma.append(round(ca,2) if (am[i]>0 or ca>0) else None)
     return cump,cuma
 
+def build_excel(data, cump, cuma, labels):
+    """Build a formatted .xlsx workbook and return bytes."""
+    import openpyxl
+    from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+    import io as _io
+
+    wb = openpyxl.Workbook()
+    acts = data.get("activities", [])
+    N    = data.get("n_months", 12)
+
+    # ── Colour palette ────────────────────────────────────────────────────────
+    HDR_BG  = PatternFill("solid", fgColor="2D3747")
+    HDR_FG  = Font(color="E8ECF0", bold=True, size=10)
+    LOCK_BG = PatternFill("solid", fgColor="3D4557")
+    EDIT_BG = PatternFill("solid", fgColor="1A2030")
+    CUR_BG  = PatternFill("solid", fgColor="5A3A00")   # orange tint = current month
+    DONE_BG = PatternFill("solid", fgColor="2A5E3A")
+    PROG_BG = PatternFill("solid", fgColor="2A4E2A")
+    DEL_BG  = PatternFill("solid", fgColor="5A1A1A")
+    THIN    = Border(
+        left=Side(style="thin", color="555B6E"),
+        right=Side(style="thin", color="555B6E"),
+        top=Side(style="thin", color="555B6E"),
+        bottom=Side(style="thin", color="555B6E"))
+    WH  = Font(color="E8ECF0", size=9)
+    GRY = Font(color="9BA3AF", size=9)
+
+    def _ap(ws, r, c, v, fill=None, font=None, align=None, num_fmt=None):
+        cell = ws.cell(row=r, column=c, value=v)
+        if fill:    cell.fill   = fill
+        if font:    cell.font   = font
+        if align:   cell.alignment = align
+        if num_fmt: cell.number_format = num_fmt
+        cell.border = THIN
+        return cell
+
+    center = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    left   = Alignment(horizontal="left",   vertical="center", wrap_text=False)
+
+    # ── Sheet 1 : Progress (editable) ────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Progress"
+    ws.freeze_panes = "F2"          # freeze cols A-E, row 1
+    ws.sheet_view.showGridLines = False
+
+    # Header row
+    fixed_hdrs = ["No", "Activity", "Wt%", "Cost (฿)", "Status"]
+    month_hdrs = [labels[m] if m < len(labels) else f"M{m+1}" for m in range(N)]
+    all_hdrs   = fixed_hdrs + month_hdrs
+    cm_idx     = cur_month(data["start_date"], N)   # 1-based
+
+    for ci, h in enumerate(all_hdrs, 1):
+        is_cm = (ci == 5 + cm_idx)
+        bg = CUR_BG if is_cm else HDR_BG
+        _ap(ws, 1, ci, h, fill=bg, font=HDR_FG, align=center)
+
+    # Column widths
+    ws.column_dimensions["A"].width = 10
+    ws.column_dimensions["B"].width = 40
+    ws.column_dimensions["C"].width = 7
+    ws.column_dimensions["D"].width = 14
+    ws.column_dimensions["E"].width = 14
+    for ci in range(6, 6+N):
+        ws.column_dimensions[get_column_letter(ci)].width = 9
+
+    # Status dropdown validation
+    dv = DataValidation(
+        type="list",
+        formula1='"Not Started,In Progress,Pending,Completed,Delayed,Cancelled"',
+        showDropDown=False)
+    ws.add_data_validation(dv)
+
+    sopts = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+
+    for ri, a in enumerate(acts, 2):
+        sk = next((k for k in sopts if k in a.get("status","")), sopts[0])
+        # Status row colour
+        if   "Completed"   in sk: row_bg = DONE_BG
+        elif "In Progress" in sk: row_bg = PROG_BG
+        elif "Delayed"     in sk: row_bg = DEL_BG
+        else:                     row_bg = EDIT_BG
+
+        _ap(ws, ri, 1, a.get("no",""),  fill=LOCK_BG, font=GRY,  align=center)
+        _ap(ws, ri, 2, a.get("name",""),fill=LOCK_BG, font=WH,   align=left)
+        _ap(ws, ri, 3, a.get("weight",0),fill=LOCK_BG,font=GRY,  align=center, num_fmt="0.0")
+        _ap(ws, ri, 4, a.get("planned_cost",0), fill=LOCK_BG, font=GRY, align=center, num_fmt='#,##0')
+        _ap(ws, ri, 5, sk,               fill=row_bg, font=WH,   align=center)
+        dv.add(ws.cell(row=ri, column=5))
+
+        for mi in range(1, N+1):
+            ci = 5 + mi
+            in_range = a["start_month"] <= mi <= a["end_month"]
+            val = float(a.get("actuals",{}).get(str(mi), 0)) if in_range else None
+            is_cm_col = (mi == cm_idx)
+            bg = CUR_BG if is_cm_col else (EDIT_BG if in_range else LOCK_BG)
+            fn = WH if in_range else GRY
+            cell = _ap(ws, ri, ci, val, fill=bg, font=fn, align=center, num_fmt="0")
+            if not in_range:
+                cell.protection = openpyxl.styles.Protection(locked=True)
+
+        ws.row_dimensions[ri].height = 18
+
+    ws.row_dimensions[1].height = 22
+
+    # ── Sheet 2 : S-Curve Data (reference) ──────────────────────────────────
+    ws2 = wb.create_sheet("S-Curve Data")
+    ws2.freeze_panes = "B2"
+    ws2.sheet_view.showGridLines = False
+    for ci, h in enumerate(["Month","Plan (%)","Actual (%)","SV","SPI"], 1):
+        _ap(ws2, 1, ci, h, fill=HDR_BG, font=HDR_FG, align=center)
+    ws2.column_dimensions["A"].width = 14
+    for col in ["B","C","D","E"]: ws2.column_dimensions[col].width = 12
+    for i, lbl in enumerate(labels):
+        pv = cump[i]
+        ev = cuma[i]
+        sv_ = round(ev-pv,2) if ev is not None else None
+        spi_= round(ev/pv,2) if (ev is not None and pv>0) else None
+        row = [lbl, pv, ev, sv_, spi_]
+        for ci, v in enumerate(row, 1):
+            _ap(ws2, i+2, ci, v, fill=EDIT_BG, font=WH, align=center, num_fmt="0.00")
+
+    # ── Sheet 3 : Project Info ───────────────────────────────────────────────
+    ws3 = wb.create_sheet("Project Info")
+    ws3.sheet_view.showGridLines = False
+    ws3.column_dimensions["A"].width = 22
+    ws3.column_dimensions["B"].width = 50
+    fields = [
+        ("Project Name (EN)", data.get("project_name","")),
+        ("Project Name (TH)", data.get("project_name_th","")),
+        ("Contract No.",      data.get("contract_no","")),
+        ("Project Owner",     data.get("project_owner","")),
+        ("Contractor",        data.get("contractor","")),
+        ("Start Date",        data.get("start_date","")),
+        ("End Date",          data.get("end_date","")),
+        ("Months",            data.get("n_months","")),
+        ("Total Budget (THB)",data.get("total_budget",0)),
+        ("No. Activities",    len(acts)),
+    ]
+    for ri, (k, v) in enumerate(fields, 1):
+        _ap(ws3, ri, 1, k, fill=HDR_BG, font=HDR_FG, align=left)
+        _ap(ws3, ri, 2, v, fill=EDIT_BG, font=WH,    align=left)
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
 SCLS={"Completed":"st-done","In Progress":"st-prog","Pending":"st-pend",
       "Delayed":"st-delay","Not Started":"st-none"}
 SMAP={"Completed":"✅ Completed","In Progress":"🚧 In Progress","Pending":"⏳ Pending",
@@ -582,6 +730,60 @@ elif page=="📝 Update Progress":
                     data["activities"][i].setdefault("actuals",{})[str(m)] = float(val)
         save_data(data)
         st.success("✅ Progress saved!"); st.rerun()
+
+    # ── Excel Export / Import ─────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 📊 Excel Export / Import")
+    ex_col, im_col = st.columns(2)
+
+    with ex_col:
+        st.markdown("**📥 Export to Excel**")
+        fname = re.sub(r'[^A-Za-z0-9_]','_', data.get("project_name","project"))[:30]
+        fname = f"{fname}_progress.xlsx"
+        xl_bytes = build_excel(data, cump, cuma, labels)
+        st.download_button(
+            label="⬇️ Download Excel",
+            data=xl_bytes,
+            file_name=fname,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            type="primary"
+        )
+        st.caption("3 sheets: **Progress** (editable), **S-Curve Data**, **Project Info**. Edit Status & month cells, then import back below.")
+
+    with im_col:
+        st.markdown("**📤 Import from Excel**")
+        xl_up = st.file_uploader("Upload edited Excel", type=["xlsx"], key="xl_import")
+        if xl_up:
+            try:
+                import openpyxl as _xl
+                _wb  = _xl.load_workbook(xl_up, data_only=True)
+                _ws  = _wb["Progress"]
+                _rows = list(_ws.iter_rows(min_row=2, values_only=True))
+                sopts_xl = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+                updated = 0
+                for ri, xrow in enumerate(_rows):
+                    if ri >= len(data["activities"]): break
+                    # col 5 = Status (0-indexed: col 4)
+                    st_xl = str(xrow[4]).strip() if xrow[4] else "Not Started"
+                    st_xl = next((k for k in sopts_xl if k.lower() in st_xl.lower()), "Not Started")
+                    data["activities"][ri]["status"] = SMAP.get(st_xl, st_xl)
+                    # cols 6..N+5 = M1..MN (0-indexed: 5..N+4)
+                    for mi in range(1, N+1):
+                        val = xrow[4+mi] if (4+mi) < len(xrow) else None
+                        if val is not None and str(val).strip() not in ("","None"):
+                            try:
+                                fval = float(val)
+                                if 0 <= fval <= 100:
+                                    data["activities"][ri].setdefault("actuals",{})[str(mi)] = fval
+                            except (ValueError, TypeError):
+                                pass
+                    updated += 1
+                save_data(data)
+                st.success(f"✅ Imported {updated} rows from Excel and saved!")
+                st.rerun()
+            except Exception as _e:
+                st.error(f"❌ Could not read Excel: {_e}")
 
 # ── PROJECT SETUP (merged) ────────────────────────────────────────────────────
 elif page=="⚙️ Project Setup":
