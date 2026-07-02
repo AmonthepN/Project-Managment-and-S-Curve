@@ -1509,9 +1509,24 @@ elif page=="📝 Update Progress":
     cdf["Budget"] = pd.to_numeric(cdf["Budget"], errors="coerce").fillna(0.0)
     for m in range(1, N+1):
         cdf[f"C{m}"] = pd.to_numeric(cdf[f"C{m}"], errors="coerce")
+
+    # Determine which months have at least one activity in range
+    months_in_range = set()
+    for a in acts:
+        for m in range(a.get("start_month", 1), a.get("end_month", 1) + 1):
+            months_in_range.add(m)
+    # Month columns with NO activity → fully disable that column
+    locked_month_cols = [f"C{m}" for m in range(1, N+1) if m not in months_in_range]
+    all_disabled_cols  = ["No", "Activity"] + locked_month_cols
+
     cm_cfg2 = {}
     for m in range(1, N+1):
-        lbl2 = f"C{m} ★" if m == cm else f"C{m}"
+        if m not in months_in_range:
+            lbl2 = "🔒"          # column is fully locked — no activity scheduled
+        elif m == cm:
+            lbl2 = f"C{m} ★"
+        else:
+            lbl2 = f"C{m}"
         cm_cfg2[f"C{m}"] = st.column_config.NumberColumn(
             lbl2, min_value=0.0, step=1000.0, format="%.0f", width="small")
     cost_cfg = {
@@ -1521,9 +1536,10 @@ elif page=="📝 Update Progress":
         **cm_cfg2,
     }
     cost_edited = st.data_editor(cdf, use_container_width=True, hide_index=True,
-                                  num_rows="fixed", column_config=cost_cfg, key="cost_editor")
+                                  num_rows="fixed", column_config=cost_cfg,
+                                  disabled=all_disabled_cols, key="cost_editor")
     cl2, cr2 = st.columns([4,1])
-    cl2.caption("Starred column ★ = current month. Enter ฿ actually spent that month.")
+    cl2.caption("★ = current month. Blank cells (outside activity schedule) are locked and won't be saved.")
     if cr2.button("💾 Save Costs", use_container_width=True, type="primary"):
         for i, row in cost_edited.iterrows():
             # Save edited planned_cost (Budget column)
