@@ -363,6 +363,30 @@ def compute(data):
         ca+=am[i]; cuma.append(round(ca,2) if (am[i]>0 or ca>0) else None)
     return cump,cuma
 
+def compute_cost(data):
+    """Cumulative planned-cost and actual-cost arrays by month (฿)."""
+    acts=data["activities"]; N=data["n_months"]
+    budget=data.get("total_budget",0)
+    mp=[0.0]*N; ma=[None]*N
+    for a in acts:
+        s,e=int(a["start_month"]),int(a["end_month"]); dur=max(1,e-s+1)
+        cost=a.get("planned_cost",0) or round(a.get("weight",0)/100*budget,2)
+        per=cost/dur
+        for m in range(s,min(e+1,N+1)):
+            mp[m-1]+=per
+        for m_str,v in a.get("actual_costs",{}).items():
+            m=int(m_str)
+            if 1<=m<=N:
+                ma[m-1]=(ma[m-1] or 0)+float(v)
+    cum_p=cum_a=0.0; cp=[]; ca=[]
+    for i in range(N):
+        cum_p+=mp[i]; cp.append(round(cum_p,2))
+        if ma[i] is not None:
+            cum_a+=ma[i]; ca.append(round(cum_a,2))
+        else:
+            ca.append(round(cum_a,2) if cum_a>0 else None)
+    return cp,ca,mp,ma
+
 def build_excel(data, cump, cuma, labels):
     """Build a formatted .xlsx workbook and return bytes."""
     import openpyxl
@@ -548,13 +572,11 @@ with st.sidebar:
     st.markdown("<div style='font-size:.68rem;font-weight:700;color:#6B6B6B;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px'>NAVIGATE</div>", unsafe_allow_html=True)
     page=st.radio("Navigate",[
         "🏠 Dashboard",
-        "📋 Process Guide",
         "⚙️ Project Setup",
         "📝 Update Progress",
         "📈 S-Curve",
         "📅 Gantt",
         "📊 EVM Indicators",
-        "💰 Budget & Cost",
     ], label_visibility="collapsed")
 
     # ── Footer info ────────────────────────────────────────────────────────────
@@ -570,6 +592,7 @@ data=load_data()
 acts=data["activities"]; N=data["n_months"]; SI=data["start_date"]
 labels=get_labels(SI,N)
 cump,cuma=compute(data)
+cum_pc,cum_ac,monthly_pc,monthly_ac=compute_cost(data)
 cm=cur_month(SI,N)
 
 # ── DASHBOARD ─────────────────────────────────────────────────────────────────
@@ -601,6 +624,34 @@ if page=="🏠 Dashboard":
         col.markdown(
             f'<div class="kpi-card">'
             f'<div class="kpi-num">{val}<sup style="font-size:.9rem;color:{ac}"> {dot}</sup></div>'
+            f'<div class="kpi-label">{lbl}</div>'
+            f'</div>', unsafe_allow_html=True)
+
+    # ── Cost KPI row ──────────────────────────────────────────────────────────
+    budget_d = data.get("total_budget", 0)
+    total_wbs_d = sum(a.get("planned_cost", 0) or round(a.get("weight", 0) / 100 * budget_d, 2) for a in acts)
+    total_actual_cost_d = next((v for v in reversed(cum_ac) if v is not None), 0) or 0
+    remaining_d = budget_d - total_actual_cost_d
+    pv_cost_d = cum_pc[cm - 1] if cm <= N else cum_pc[-1]
+    cost_var_d = total_actual_cost_d - pv_cost_d
+
+    st.markdown("")
+    cc1, cc2, cc3, cc4, cc5 = st.columns(5)
+    cost_cards = [
+        (cc1, f"฿{budget_d:,.0f}", "Contract Budget", "#0A0A0A"),
+        (cc2, f"฿{total_wbs_d:,.0f}", "WBS Planned Cost",
+         "#1AE06B" if total_wbs_d <= budget_d else "#CC2222"),
+        (cc3, f"฿{total_actual_cost_d:,.0f}", f"Actual Cost (M{cm})",
+         "#1AE06B" if total_actual_cost_d <= pv_cost_d else "#CC2222"),
+        (cc4, f"฿{remaining_d:,.0f}", "Budget Remaining",
+         "#1AE06B" if remaining_d >= 0 else "#CC2222"),
+        (cc5, f"฿{cost_var_d:+,.0f}", "Cost Variance",
+         "#1AE06B" if cost_var_d <= 0 else "#CC2222"),
+    ]
+    for col, val, lbl, ac in cost_cards:
+        col.markdown(
+            f'<div class="kpi-card">'
+            f'<div class="kpi-num" style="color:{ac};font-size:1.6rem">{val}</div>'
             f'<div class="kpi-label">{lbl}</div>'
             f'</div>', unsafe_allow_html=True)
 
@@ -688,43 +739,364 @@ if page=="🏠 Dashboard":
 
 # ── S-CURVE ───────────────────────────────────────────────────────────────────
 elif page=="📈 S-Curve":
-    st.markdown("# 📈 S-Curve: Plan vs Actual")
+    st.markdown("# 📈 S-Curve")
     st.markdown("---")
-    fig=go.Figure()
-    fig.add_trace(go.Scatter(x=labels,y=cump,name="Planned (%)",fill="tozeroy",
-        fillcolor="rgba(26,224,107,.12)",line=dict(color="#0A0A0A",width=2.5),
-        mode="lines+markers",marker=dict(size=8),
-        hovertemplate="<b>%{x}</b><br>Plan: %{y:.1f}%<extra></extra>"))
-    ax=[labels[i] for i,v in enumerate(cuma) if v is not None]
-    ay=[v for v in cuma if v is not None]
-    if ay:
-        fig.add_trace(go.Scatter(x=ax,y=ay,name="Actual (%)",fill="tozeroy",
-            fillcolor="rgba(26,224,107,.18)",line=dict(color="#1AE06B",width=2.5),
-            mode="lines+markers",marker=dict(size=9,symbol="diamond"),
-            hovertemplate="<b>%{x}</b><br>Actual: %{y:.1f}%<extra></extra>"))
-    if cm<=N:
-        fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#D97706")
-        fig.add_annotation(x=labels[cm-1],y=105,text=f"M{cm} TODAY",showarrow=False,
-            font=dict(color="#D97706",size=11),xanchor="left")
-    fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
-        font=dict(color="#0A0A0A",size=13),height=460,margin=dict(l=20,r=20,t=30,b=20),
-        xaxis=dict(title="Month",gridcolor="#F0F0F0",tickangle=-30,showline=False),
-        yaxis=dict(title="Cumulative Progress (%)",gridcolor="#F0F0F0",range=[0,105],ticksuffix="%"),
-        legend=dict(bgcolor="#FFFFFF",bordercolor="#E0E0E0",borderwidth=1),hovermode="x unified")
-    st.plotly_chart(fig,use_container_width=True)
+    sc_tab1, sc_tab2, sc_tab3 = st.tabs(["📈 Progress S-Curve", "💰 Cost S-Curve", "🌐 Integrated Plan"])
 
-    rows=[]
-    for i,lbl in enumerate(labels):
-        pv=cump[i]; ev=cuma[i]
-        sv_=round(ev-pv,2) if ev is not None else None
-        spi_=round(ev/pv,2) if (ev is not None and pv>0) else None
-        rows.append({"Month":lbl,"Plan (%)":f"{pv:.1f}",
-            "Actual (%)":f"{ev:.1f}" if ev is not None else "—",
-            "SV":f"{sv_:+.1f}" if sv_ is not None else "—",
-            "SPI":f"{spi_:.2f}" if spi_ else "—",
-            "Status":("✅ On Track" if spi_ and spi_>=1.05 else "⚠️ Warning" if spi_ and spi_>=0.95
-                      else "💤 Delayed" if spi_ and spi_>=0.8 else "🔴 Critical" if spi_ else "—")})
-    st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+    # ── Tab 1: Progress ────────────────────────────────────────────────────────
+    with sc_tab1:
+        fig=go.Figure()
+        fig.add_trace(go.Scatter(x=labels,y=cump,name="Planned (%)",fill="tozeroy",
+            fillcolor="rgba(26,224,107,.12)",line=dict(color="#0A0A0A",width=2.5),
+            mode="lines+markers",marker=dict(size=8),
+            hovertemplate="<b>%{x}</b><br>Plan: %{y:.1f}%<extra></extra>"))
+        ax=[labels[i] for i,v in enumerate(cuma) if v is not None]
+        ay=[v for v in cuma if v is not None]
+        if ay:
+            fig.add_trace(go.Scatter(x=ax,y=ay,name="Actual (%)",fill="tozeroy",
+                fillcolor="rgba(26,224,107,.18)",line=dict(color="#1AE06B",width=2.5),
+                mode="lines+markers",marker=dict(size=9,symbol="diamond"),
+                hovertemplate="<b>%{x}</b><br>Actual: %{y:.1f}%<extra></extra>"))
+        if cm<=N:
+            fig.add_vline(x=labels[cm-1],line_dash="dash",line_color="#1AE06B",line_width=2)
+            fig.add_annotation(x=labels[cm-1],y=105,text=f"M{cm} TODAY",showarrow=False,
+                font=dict(color="#0A0A0A",size=11),xanchor="left")
+        fig.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A",size=13),height=420,margin=dict(l=20,r=20,t=30,b=20),
+            xaxis=dict(title="Month",gridcolor="#F0F0F0",tickangle=-30,showline=False),
+            yaxis=dict(title="Cumulative Progress (%)",gridcolor="#F0F0F0",range=[0,105],ticksuffix="%"),
+            legend=dict(bgcolor="#FFFFFF",bordercolor="#E0E0E0",borderwidth=1),hovermode="x unified")
+        st.plotly_chart(fig,use_container_width=True)
+
+        rows=[]
+        for i,lbl in enumerate(labels):
+            pv=cump[i]; ev=cuma[i]
+            sv_=round(ev-pv,2) if ev is not None else None
+            spi_=round(ev/pv,2) if (ev is not None and pv>0) else None
+            rows.append({"Month":lbl,"Plan (%)":f"{pv:.1f}",
+                "Actual (%)":f"{ev:.1f}" if ev is not None else "—",
+                "SV":f"{sv_:+.1f}" if sv_ is not None else "—",
+                "SPI":f"{spi_:.2f}" if spi_ else "—",
+                "Status":("✅ On Track" if spi_ and spi_>=1.05 else "⚠️ Warning" if spi_ and spi_>=0.95
+                          else "💤 Delayed" if spi_ and spi_>=0.8 else "🔴 Critical" if spi_ else "—")})
+        st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+
+    # ── Tab 2: Cost S-Curve ────────────────────────────────────────────────────
+    with sc_tab2:
+        budget = data.get("total_budget",0)
+        total_wbs = sum(a.get("planned_cost",0) or round(a.get("weight",0)/100*budget,2) for a in acts)
+        burn_down = [budget - v for v in cum_pc]
+
+        # KPI row
+        total_actual_cost = next((v for v in reversed(cum_ac) if v is not None), 0) or 0
+        remaining = budget - total_actual_cost
+        cost_var  = total_actual_cost - (cum_pc[cm-1] if cm<=N else cum_pc[-1])
+
+        ck1,ck2,ck3,ck4 = st.columns(4)
+        def _ck(col,val,lbl,ac="#0A0A0A"):
+            col.markdown(f'<div class="kpi-card"><div class="kpi-num" style="color:{ac}">{val}</div>'
+                         f'<div class="kpi-label">{lbl}</div></div>',unsafe_allow_html=True)
+        _ck(ck1,f"฿{budget:,.0f}","Contract Budget")
+        _ck(ck2,f"฿{total_wbs:,.0f}","WBS Planned Cost",
+            "#1AE06B" if total_wbs<=budget else "#CC2222")
+        _ck(ck3,f"฿{total_actual_cost:,.0f}",f"Actual Cost (M{cm})",
+            "#1AE06B" if total_actual_cost<=(cum_pc[cm-1] if cm<=N else 0) else "#CC2222")
+        _ck(ck4,f"฿{remaining:,.0f}","Budget Remaining",
+            "#1AE06B" if remaining>=0 else "#CC2222")
+
+        st.markdown("")
+
+        # Cost S-Curve chart
+        fig2=go.Figure()
+        fig2.add_trace(go.Scatter(x=labels,y=cum_pc,name="Planned Cost (฿)",
+            fill="tozeroy",fillcolor="rgba(10,10,10,.07)",
+            line=dict(color="#0A0A0A",width=2.5),mode="lines+markers",marker=dict(size=7),
+            hovertemplate="<b>%{x}</b><br>Plan: ฿%{y:,.0f}<extra></extra>"))
+        ax2=[labels[i] for i,v in enumerate(cum_ac) if v is not None]
+        ay2=[v for v in cum_ac if v is not None]
+        if ay2:
+            fig2.add_trace(go.Scatter(x=ax2,y=ay2,name="Actual Cost (฿)",
+                fill="tozeroy",fillcolor="rgba(26,224,107,.15)",
+                line=dict(color="#1AE06B",width=2.5),mode="lines+markers",
+                marker=dict(size=9,symbol="diamond"),
+                hovertemplate="<b>%{x}</b><br>Actual: ฿%{y:,.0f}<extra></extra>"))
+        fig2.add_trace(go.Scatter(x=labels,y=burn_down,name="Budget Remaining (฿)",
+            line=dict(color="#CC2222",width=1.5,dash="dot"),
+            mode="lines",yaxis="y2",
+            hovertemplate="<b>%{x}</b><br>Remaining: ฿%{y:,.0f}<extra></extra>"))
+        if cm<=N:
+            fig2.add_vline(x=labels[cm-1],line_dash="dash",line_color="#1AE06B",line_width=2)
+            fig2.add_annotation(x=labels[cm-1],y=budget,text="TODAY",showarrow=False,
+                font=dict(color="#0A0A0A",size=11),xanchor="left")
+        fig2.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A",size=13),height=400,margin=dict(l=20,r=60,t=30,b=20),
+            xaxis=dict(title="Month",gridcolor="#F0F0F0",tickangle=-30,showline=False),
+            yaxis=dict(title="Cumulative Cost (฿)",gridcolor="#F0F0F0",tickprefix="฿",tickformat=",.0f"),
+            yaxis2=dict(title="Remaining (฿)",overlaying="y",side="right",
+                        tickprefix="฿",tickformat=",.0f",showgrid=False),
+            legend=dict(bgcolor="#FFFFFF",bordercolor="#E0E0E0",borderwidth=1),
+            hovermode="x unified")
+        st.plotly_chart(fig2,use_container_width=True)
+
+        # Monthly bar
+        st.markdown('<div class="sec">MONTHLY PLANNED SPEND</div>',unsafe_allow_html=True)
+        act_colors=["#1AE06B" if (monthly_ac[i] or 0)<=monthly_pc[i] else "#CC2222" for i in range(N)]
+        fig3=go.Figure()
+        fig3.add_trace(go.Bar(x=labels,y=monthly_pc,name="Planned",
+            marker_color="#0A0A0A",opacity=0.85,
+            hovertemplate="<b>%{x}</b><br>Plan: ฿%{y:,.0f}<extra></extra>"))
+        ma_vals=[monthly_ac[i] or 0 for i in range(N)]
+        if any(v>0 for v in ma_vals):
+            fig3.add_trace(go.Bar(x=labels,y=ma_vals,name="Actual",
+                marker_color="#1AE06B",opacity=0.9,
+                hovertemplate="<b>%{x}</b><br>Actual: ฿%{y:,.0f}<extra></extra>"))
+        fig3.update_layout(paper_bgcolor="#FFFFFF",plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A",size=12),height=300,barmode="group",
+            margin=dict(l=20,r=20,t=20,b=20),
+            xaxis=dict(gridcolor="#F0F0F0",showline=False,tickangle=-30),
+            yaxis=dict(gridcolor="#F0F0F0",tickprefix="฿",tickformat=",.0f"),
+            legend=dict(bgcolor="#FFFFFF"),hovermode="x unified")
+        st.plotly_chart(fig3,use_container_width=True)
+
+        # Cost detail table
+        cost_rows=[]
+        for a in acts:
+            pc=a.get("planned_cost",0) or round(a.get("weight",0)/100*budget,2)
+            ac_tot=sum(float(v) for v in a.get("actual_costs",{}).values())
+            share=round(pc/total_wbs*100,1) if total_wbs>0 else 0
+            cost_rows.append({"No":a["no"],"Activity":a["name"][:45],
+                "Wt%":a["weight"],"Budget(฿)":f"฿{pc:,.0f}",
+                "Actual(฿)":f"฿{ac_tot:,.0f}","Remaining(฿)":f"฿{pc-ac_tot:,.0f}",
+                "Share%":f"{share}%","Status":a.get("status","Not Started")})
+        st.dataframe(pd.DataFrame(cost_rows),use_container_width=True,hide_index=True)
+
+    # ── Tab 3: Integrated Plan ────────────────────────────────────────────────
+    with sc_tab3:
+        st.markdown("#### 🌐 Multi-Project Integrated Cost Plan")
+        st.caption(
+            "Aggregates WBS-based cost distributions across selected subprojects onto a shared "
+            "calendar axis. **Select subprojects only** (e.g. CM · CR · LP · PY) to avoid "
+            "double-counting with any Full Proposal entry.")
+
+        # ── Project selector ─────────────────────────────────────────────────
+        all_projs_int = db_list()
+        if not all_projs_int:
+            st.warning("No projects in database."); st.stop()
+
+        proj_display = {
+            f"{p['project_name']}  [{p['doc']}  |  ฿{p['total_budget']:,.0f}]": p['key']
+            for p in all_projs_int
+        }
+        # Default: all projects selected
+        default_sel = list(proj_display.keys())
+
+        sel_col, warn_col = st.columns([3, 1])
+        selected_labels = sel_col.multiselect(
+            "Projects to integrate:", options=list(proj_display.keys()),
+            default=default_sel,
+            help="Deselect 'Full Proposal' rows to prevent double-counting")
+
+        if not selected_labels:
+            st.warning("Select at least one project."); st.stop()
+
+        selected_keys_int = [proj_display[lbl] for lbl in selected_labels]
+        selected_data_int = [db_get(k) for k in selected_keys_int]
+        selected_data_int = [d for d in selected_data_int if d]
+
+        n_proj = len(selected_data_int)
+        total_int_budget = sum(d.get("total_budget", 0) for d in selected_data_int)
+        warn_col.markdown(
+            f'<div class="kpi-card" style="margin-top:28px">'
+            f'<div class="kpi-num" style="font-size:1.3rem;color:#0A0A0A">฿{total_int_budget:,.0f}</div>'
+            f'<div class="kpi-label">Integrated Budget ({n_proj} projects)</div>'
+            f'</div>', unsafe_allow_html=True)
+
+        # ── Build global month axis ──────────────────────────────────────────
+        proj_starts = [datetime.strptime(d["start_date"], "%Y-%m-%d") for d in selected_data_int]
+        proj_ends   = [datetime.strptime(d["start_date"], "%Y-%m-%d") + relativedelta(months=d["n_months"]-1)
+                       for d in selected_data_int]
+        g_start = min(proj_starts)
+        g_end   = max(proj_ends)
+        N_int   = (g_end.year - g_start.year)*12 + (g_end.month - g_start.month) + 1
+        int_labels = [(g_start + relativedelta(months=m)).strftime("%b %Y") for m in range(N_int)]
+
+        # ── Aggregate across projects ────────────────────────────────────────
+        int_mp   = [0.0] * N_int   # monthly planned cost (฿)
+        int_ma   = [0.0] * N_int   # monthly actual cost (฿)
+        int_ma_flag = [False] * N_int  # True if any project contributed actuals that month
+
+        palette_proj = ["#0A0A0A","#1AE06B","#0070B8","#A06000","#CC2222",
+                        "#6B6B6B","#00B4B4","#AA00AA","#E06000","#003080"]
+        stacked_traces = []
+
+        for idx, d in enumerate(selected_data_int):
+            pname   = d.get("project_name", f"Project {idx+1}")
+            p_start = datetime.strptime(d["start_date"], "%Y-%m-%d")
+            offset  = (p_start.year - g_start.year)*12 + (p_start.month - g_start.month)
+            budget  = d.get("total_budget", 0)
+            acts_i  = d.get("activities", [])
+            N_i     = d.get("n_months", 12)
+
+            pm_proj = [0.0] * N_int   # this project's monthly planned cost
+            for a in acts_i:
+                s  = int(a["start_month"]); e = int(a["end_month"])
+                dur = max(1, e - s + 1)
+                # Activity cost = budget × weight%  (or use stored planned_cost)
+                cost = a.get("planned_cost", 0) or round(a.get("weight", 0) / 100 * budget, 2)
+                per_month = cost / dur
+                for m in range(s, min(e + 1, N_i + 1)):
+                    gi = offset + (m - 1)
+                    if 0 <= gi < N_int:
+                        int_mp[gi]   += per_month
+                        pm_proj[gi]  += per_month
+                # Actual costs
+                for m_str, v in a.get("actual_costs", {}).items():
+                    m_i = int(m_str)
+                    gi  = offset + (m_i - 1)
+                    if 0 <= gi < N_int:
+                        int_ma[gi]      += float(v)
+                        int_ma_flag[gi]  = True
+
+            stacked_traces.append((pname, pm_proj, palette_proj[idx % len(palette_proj)]))
+
+        # Cumulative arrays
+        cum_int_p = []; cum_int_a = []
+        rp = ra = 0.0
+        for i in range(N_int):
+            rp += int_mp[i]; cum_int_p.append(round(rp, 2))
+            if int_ma_flag[i]:
+                ra += int_ma[i]; cum_int_a.append(round(ra, 2))
+            else:
+                cum_int_a.append(round(ra, 2) if ra > 0 else None)
+
+        burn_int = [total_int_budget - v for v in cum_int_p]
+
+        total_int_actual  = next((v for v in reversed(cum_int_a) if v is not None), 0) or 0
+        remaining_int     = total_int_budget - total_int_actual
+        # Current month on global axis
+        today = datetime.today()
+        cm_int = max(1, min(
+            (today.year - g_start.year)*12 + (today.month - g_start.month) + 1,
+            N_int))
+
+        pv_int = cum_int_p[cm_int - 1]
+        cv_int = total_int_actual - pv_int
+
+        # ── KPI row ──────────────────────────────────────────────────────────
+        ik1, ik2, ik3, ik4, ik5 = st.columns(5)
+        def _ik(col, val, lbl, ac="#0A0A0A"):
+            col.markdown(f'<div class="kpi-card"><div class="kpi-num" style="color:{ac};font-size:1.5rem">'
+                         f'{val}</div><div class="kpi-label">{lbl}</div></div>', unsafe_allow_html=True)
+        _ik(ik1, f"฿{total_int_budget:,.0f}",  "Integrated Budget")
+        _ik(ik2, f"฿{pv_int:,.0f}",             f"Planned Cost (M now)")
+        _ik(ik3, f"฿{total_int_actual:,.0f}",   "Actual Cost to Date",
+            "#1AE06B" if total_int_actual <= pv_int else "#CC2222")
+        _ik(ik4, f"฿{remaining_int:,.0f}",       "Budget Remaining",
+            "#1AE06B" if remaining_int >= 0 else "#CC2222")
+        _ik(ik5, f"฿{cv_int:+,.0f}",             "Cost Variance",
+            "#1AE06B" if cv_int <= 0 else "#CC2222")
+
+        st.markdown("")
+
+        # ── Stacked bar (per-project monthly) + cumulative S-curve ──────────
+        fig_int = go.Figure()
+
+        # Stacked bars — monthly contribution per project
+        for pname, pm_proj, col_p in stacked_traces:
+            fig_int.add_trace(go.Bar(
+                x=int_labels, y=pm_proj, name=pname,
+                marker_color=col_p, opacity=0.85,
+                hovertemplate="<b>%{x}</b><br>" + pname + ": ฿%{y:,.0f}<extra></extra>"))
+
+        # Cumulative planned cost line (y2)
+        fig_int.add_trace(go.Scatter(
+            x=int_labels, y=cum_int_p, name="Cumulative Plan (฿)",
+            line=dict(color="#0A0A0A", width=3),
+            mode="lines+markers", marker=dict(size=6),
+            yaxis="y2",
+            hovertemplate="<b>%{x}</b><br>Cum Plan: ฿%{y:,.0f}<extra></extra>"))
+
+        # Cumulative actual cost line (y2) — only where data exists
+        ax_int = [int_labels[i] for i, v in enumerate(cum_int_a) if v is not None]
+        ay_int = [v for v in cum_int_a if v is not None]
+        if ay_int:
+            fig_int.add_trace(go.Scatter(
+                x=ax_int, y=ay_int, name="Cumulative Actual (฿)",
+                line=dict(color="#1AE06B", width=3, dash="dot"),
+                mode="lines+markers", marker=dict(size=8, symbol="diamond"),
+                yaxis="y2",
+                hovertemplate="<b>%{x}</b><br>Cum Actual: ฿%{y:,.0f}<extra></extra>"))
+
+        # Burn-down line (y2)
+        fig_int.add_trace(go.Scatter(
+            x=int_labels, y=burn_int, name="Budget Remaining (฿)",
+            line=dict(color="#CC2222", width=2, dash="dash"),
+            mode="lines", yaxis="y2", visible="legendonly",
+            hovertemplate="<b>%{x}</b><br>Remaining: ฿%{y:,.0f}<extra></extra>"))
+
+        # Today vline
+        if 1 <= cm_int <= N_int:
+            fig_int.add_vline(x=int_labels[cm_int - 1],
+                              line_dash="dash", line_color="#1AE06B", line_width=2)
+            fig_int.add_annotation(x=int_labels[cm_int - 1], y=1, yref="paper",
+                text="TODAY", showarrow=False,
+                font=dict(color="#0A0A0A", size=11), xanchor="left")
+
+        fig_int.update_layout(
+            barmode="stack",
+            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A", size=12),
+            height=450, margin=dict(l=20, r=20, t=20, b=20),
+            hovermode="x unified",
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#E0E0E0", borderwidth=1,
+                        orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+            xaxis=dict(gridcolor="#F0F0F0", showline=False, tickangle=-30),
+            yaxis=dict(title="Monthly Cost (฿)", gridcolor="#F0F0F0",
+                       tickprefix="฿", tickformat=",.0f"),
+            yaxis2=dict(title="Cumulative Cost (฿)", overlaying="y", side="right",
+                        tickprefix="฿", tickformat=",.0f",
+                        gridcolor="#F0F0F0", showgrid=False))
+        st.plotly_chart(fig_int, use_container_width=True)
+
+        # ── Per-project summary table ────────────────────────────────────────
+        st.markdown('<div class="sec">PROJECT CONTRIBUTION SUMMARY</div>', unsafe_allow_html=True)
+        int_rows = []
+        for d in selected_data_int:
+            b = d.get("total_budget", 0)
+            share = round(b / total_int_budget * 100, 1) if total_int_budget > 0 else 0
+            n_acts_i = len(d.get("activities", []))
+            wbs_cost_i = sum(
+                a.get("planned_cost", 0) or round(a.get("weight", 0)/100*b, 2)
+                for a in d.get("activities", []))
+            actual_i = sum(
+                float(v)
+                for a in d.get("activities", [])
+                for v in a.get("actual_costs", {}).values())
+            int_rows.append({
+                "Project": d.get("project_name", "?")[:40],
+                "Doc": d.get("_db_doc","—"),
+                "Budget (฿)": f"฿{b:,.0f}",
+                "Share (%)": f"{share}%",
+                "WBS Cost (฿)": f"฿{wbs_cost_i:,.0f}",
+                "Actual to Date (฿)": f"฿{actual_i:,.0f}",
+                "Remaining (฿)": f"฿{b - actual_i:,.0f}",
+                "Activities": n_acts_i,
+            })
+        st.dataframe(pd.DataFrame(int_rows), use_container_width=True, hide_index=True)
+
+        # ── Monthly detail table ─────────────────────────────────────────────
+        with st.expander("📋 Monthly Integrated Cost Table"):
+            detail_rows = []
+            for i, lbl in enumerate(int_labels):
+                detail_rows.append({
+                    "Month": lbl,
+                    "Monthly Plan (฿)": f"฿{int_mp[i]:,.0f}",
+                    "Cumulative Plan (฿)": f"฿{cum_int_p[i]:,.0f}",
+                    "Monthly Actual (฿)": f"฿{int_ma[i]:,.0f}" if int_ma_flag[i] else "—",
+                    "Cumulative Actual (฿)": f"฿{cum_int_a[i]:,.0f}" if cum_int_a[i] else "—",
+                    "Budget Remaining (฿)": f"฿{burn_int[i]:,.0f}",
+                })
+            st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
 
 # ── GANTT ─────────────────────────────────────────────────────────────────────
 elif page=="📅 Gantt":
@@ -812,179 +1184,6 @@ elif page=="📊 EVM Indicators":
             xaxis=dict(gridcolor="#F0F0F0",showline=False),yaxis=dict(gridcolor="#F0F0F0",title="SPI"))
         st.plotly_chart(fig,use_container_width=True)
 
-# ── BUDGET & COST ─────────────────────────────────────────────────────────────
-elif page=="💰 Budget & Cost":
-    st.markdown("# 💰 Budget & Cost Control")
-    st.markdown("---")
-    if not acts:
-        st.info("Add activities first in ⚙️ Project Setup."); st.stop()
-
-    budget     = data.get("total_budget", 0)
-    wbs_cost   = sum(a.get("planned_cost", 0) for a in acts)
-    variance   = budget - wbs_cost
-    ev_pct     = cuma[cm-1] if cm <= N and cuma[cm-1] is not None else 0.0
-    pv_pct     = cump[cm-1] if cm <= N else 0.0
-    ev_cost    = budget * ev_pct / 100
-    pv_cost    = budget * pv_pct / 100
-    cv_cost    = ev_cost - pv_cost
-    pct_used   = round(wbs_cost / budget * 100, 1) if budget > 0 else 0
-
-    # ── KPI row ───────────────────────────────────────────────────────────────
-    k1,k2,k3,k4,k5 = st.columns(5)
-    def _kpi(col, val, lbl, ac="#0A0A0A"):
-        col.markdown(
-            f'<div class="kpi-card"><div class="kpi-num" style="color:{ac}">{val}</div>'
-            f'<div class="kpi-label">{lbl}</div></div>', unsafe_allow_html=True)
-
-    _kpi(k1, f"฿{budget:,.0f}",   "Contract Budget")
-    _kpi(k2, f"฿{wbs_cost:,.0f}", "WBS Planned Cost",
-         "#1AE06B" if wbs_cost <= budget else "#CC2222")
-    _kpi(k3, f"฿{variance:+,.0f}", "Budget Surplus / Gap",
-         "#1AE06B" if variance >= 0 else "#CC2222")
-    _kpi(k4, f"฿{pv_cost:,.0f}",  f"PV Cost (M{cm})")
-    _kpi(k5, f"฿{ev_cost:,.0f}",  f"EV Cost (M{cm})",
-         "#1AE06B" if cv_cost >= 0 else "#CC2222")
-
-    st.markdown("")
-
-    # ── Budget utilisation bar ─────────────────────────────────────────────────
-    bar_col = "#1AE06B" if pct_used <= 100 else "#CC2222"
-    st.markdown(
-        f'<div style="background:#FFFFFF;border-radius:16px;padding:16px 20px;'
-        f'box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:16px">'
-        f'<div style="display:flex;justify-content:space-between;margin-bottom:8px">'
-        f'<span style="font-weight:700;color:#0A0A0A">WBS Cost vs Contract Budget</span>'
-        f'<span style="font-weight:800;font-size:1.1rem;color:{bar_col}">{pct_used}%</span></div>'
-        f'<div style="background:#EFEFEF;border-radius:8px;height:10px">'
-        f'<div style="background:{bar_col};height:10px;border-radius:8px;width:{min(pct_used,100):.1f}%"></div></div>'
-        f'<div style="display:flex;justify-content:space-between;margin-top:6px">'
-        f'<span style="font-size:.75rem;color:#6B6B6B">฿0</span>'
-        f'<span style="font-size:.75rem;color:#6B6B6B">฿{budget:,.0f}</span></div>'
-        f'</div>', unsafe_allow_html=True)
-
-    # ── Two-column charts ──────────────────────────────────────────────────────
-    cl, cr = st.columns([3, 2])
-
-    with cl:
-        st.markdown('<div class="sec">COST PER ACTIVITY</div>', unsafe_allow_html=True)
-        act_names  = [f"{a['no']}. {a['name'][:30]}" for a in acts if a.get("planned_cost",0)>0]
-        act_costs  = [a["planned_cost"] for a in acts if a.get("planned_cost",0)>0]
-        if act_costs:
-            colors_bar = ["#1AE06B" if c <= budget/len(acts)*1.5 else "#A06000" for c in act_costs]
-            fig_bar = go.Figure(go.Bar(
-                x=act_costs, y=act_names, orientation="h",
-                marker_color=colors_bar,
-                text=[f"฿{v:,.0f}" for v in act_costs],
-                textposition="outside", textfont=dict(size=11, color="#0A0A0A"),
-                hovertemplate="<b>%{y}</b><br>฿%{x:,.0f}<extra></extra>"))
-            fig_bar.update_layout(
-                paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-                font=dict(color="#0A0A0A", size=11),
-                height=max(280, len(act_costs)*38),
-                margin=dict(l=10, r=80, t=10, b=10),
-                xaxis=dict(gridcolor="#F0F0F0", showline=False, tickprefix="฿",
-                           tickformat=",.0f"),
-                yaxis=dict(gridcolor="#F0F0F0", autorange="reversed"))
-            st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.info("No planned costs set. Add them in ⚙️ Project Setup → Activities tab.")
-
-    with cr:
-        st.markdown('<div class="sec">BUDGET SHARE</div>', unsafe_allow_html=True)
-        pie_names = [f"{a['no']}. {a['name'][:20]}" for a in acts if a.get("planned_cost",0)>0]
-        pie_vals  = [a["planned_cost"] for a in acts if a.get("planned_cost",0)>0]
-        if pie_vals:
-            palette = ["#1AE06B","#0A0A0A","#A06000","#0070B8","#CC2222",
-                       "#6B6B6B","#1AE06B88","#0A0A0A88","#A0600088"]
-            fig_pie = go.Figure(go.Pie(
-                labels=pie_names, values=pie_vals,
-                marker=dict(colors=palette[:len(pie_vals)],
-                            line=dict(color="#FFFFFF", width=2)),
-                hole=0.45,
-                textinfo="percent",
-                hovertemplate="<b>%{label}</b><br>฿%{value:,.0f} (%{percent})<extra></extra>"))
-            fig_pie.add_annotation(text=f"<b>฿{wbs_cost/1e6:.1f}M</b><br><span style='font-size:10px'>Total WBS</span>",
-                x=0.5, y=0.5, showarrow=False, font=dict(size=14, color="#0A0A0A"),
-                align="center")
-            fig_pie.update_layout(
-                paper_bgcolor="#FFFFFF", font=dict(color="#0A0A0A", size=11),
-                height=320, margin=dict(l=10, r=10, t=10, b=10),
-                legend=dict(bgcolor="#FFFFFF", font=dict(size=10),
-                            orientation="v", x=1.02, y=0.5))
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-    # ── Monthly planned spend & burn-down ─────────────────────────────────────
-    st.markdown('<div class="sec">MONTHLY PLANNED SPEND & BUDGET BURN-DOWN</div>',
-                unsafe_allow_html=True)
-
-    monthly_spend = [0.0] * N
-    for a in acts:
-        cost = a.get("planned_cost", 0)
-        if cost <= 0: continue
-        span = a["end_month"] - a["start_month"] + 1
-        per_month = cost / span
-        for m in range(a["start_month"], a["end_month"]+1):
-            if 1 <= m <= N:
-                monthly_spend[m-1] += per_month
-
-    cum_spend   = []
-    running = 0
-    for v in monthly_spend:
-        running += v
-        cum_spend.append(running)
-    burn_down = [budget - c for c in cum_spend]
-
-    fig_sp = go.Figure()
-    fig_sp.add_trace(go.Bar(
-        x=labels, y=monthly_spend, name="Monthly Spend",
-        marker_color="#0A0A0A",
-        hovertemplate="<b>%{x}</b><br>฿%{y:,.0f}<extra></extra>"))
-    fig_sp.add_trace(go.Scatter(
-        x=labels, y=burn_down, name="Remaining Budget",
-        line=dict(color="#1AE06B", width=2.5),
-        mode="lines+markers", marker=dict(size=7),
-        yaxis="y2",
-        hovertemplate="<b>%{x}</b><br>Remaining: ฿%{y:,.0f}<extra></extra>"))
-    if cm <= N:
-        fig_sp.add_vline(x=labels[cm-1], line_dash="dash",
-                         line_color="#1AE06B", line_width=1.5)
-        fig_sp.add_annotation(x=labels[cm-1], y=1, yref="paper",
-            text="NOW", showarrow=False,
-            font=dict(color="#0A0A0A", size=10), xanchor="left")
-    fig_sp.add_hline(y=0, line_color="#CC2222", line_dash="dot",
-                     annotation_text="Budget exhausted",
-                     annotation_font_color="#CC2222",
-                     annotation_position="top right",
-                     secondary_y=True)
-    fig_sp.update_layout(
-        paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
-        font=dict(color="#0A0A0A", size=12),
-        height=340, margin=dict(l=20, r=20, t=20, b=20),
-        hovermode="x unified",
-        legend=dict(bgcolor="#FFFFFF", bordercolor="#E0E0E0", borderwidth=1),
-        xaxis=dict(gridcolor="#F0F0F0", showline=False, tickangle=-30),
-        yaxis=dict(title="Monthly Spend (฿)", gridcolor="#F0F0F0",
-                   tickprefix="฿", tickformat=",.0f"),
-        yaxis2=dict(title="Remaining Budget (฿)", overlaying="y", side="right",
-                    tickprefix="฿", tickformat=",.0f",
-                    gridcolor="#F0F0F0", showgrid=False))
-    st.plotly_chart(fig_sp, use_container_width=True)
-
-    # ── Detail table ──────────────────────────────────────────────────────────
-    st.markdown('<div class="sec">ACTIVITY COST DETAIL</div>', unsafe_allow_html=True)
-    cost_rows = []
-    for a in acts:
-        pc = a.get("planned_cost", 0)
-        share = round(pc / wbs_cost * 100, 1) if wbs_cost > 0 else 0
-        cost_rows.append({
-            "No": a["no"], "Activity": a["name"][:50],
-            "Start": f"M{a['start_month']}", "End": f"M{a['end_month']}",
-            "Weight (%)": a["weight"],
-            "Planned Cost (฿)": f"฿{pc:,.0f}",
-            "Share (%)": f"{share}%",
-            "Status": a.get("status","Not Started")
-        })
-    st.dataframe(pd.DataFrame(cost_rows), use_container_width=True, hide_index=True)
 
 # ── UPDATE PROGRESS ───────────────────────────────────────────────────────────
 elif page=="📝 Update Progress":
@@ -993,6 +1192,62 @@ elif page=="📝 Update Progress":
     if not acts: st.info("Add activities first in ⚙️ Project Setup."); st.stop()
 
     sopts_raw = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+
+    # ── Quick Activity Editor ─────────────────────────────────────────────────
+    with st.expander("✏️ Edit Activities (Name / Weight / Dates / Cost)", expanded=True):
+        st.caption("Modify activity details here without going to Project Setup. Click 💾 Save Activities when done.")
+        sopts_up = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+        up_rows = []
+        for a in acts:
+            sk2 = next((k for k in sopts_up if k in a.get("status","")), sopts_up[0])
+            up_rows.append({
+                "No":           a.get("no",""),
+                "Name (EN)":    a.get("name",""),
+                "Weight %":     float(a.get("weight", 0)),
+                "Planned Cost": float(a.get("planned_cost", 0)),
+                "Start M":      int(a.get("start_month", 1)),
+                "End M":        int(a.get("end_month", 1)),
+                "Status":       sk2,
+            })
+        up_df = pd.DataFrame(up_rows) if up_rows else pd.DataFrame(
+            columns=["No","Name (EN)","Weight %","Planned Cost","Start M","End M","Status"])
+
+        up_edited = st.data_editor(
+            up_df, use_container_width=True, hide_index=True, num_rows="fixed",
+            column_config={
+                "No":           st.column_config.TextColumn("No",        width="small",  disabled=True),
+                "Name (EN)":    st.column_config.TextColumn("Name (EN)", width="large"),
+                "Weight %":     st.column_config.NumberColumn("Weight %", min_value=0.0, max_value=100.0, step=0.5, format="%.2f", width="small"),
+                "Planned Cost": st.column_config.NumberColumn("Budget (฿)", min_value=0.0, step=10000.0, format="฿%.0f", width="medium"),
+                "Start M":      st.column_config.NumberColumn("Start M", min_value=1, max_value=36, step=1, width="small"),
+                "End M":        st.column_config.NumberColumn("End M",   min_value=1, max_value=36, step=1, width="small"),
+                "Status":       st.column_config.SelectboxColumn("Status", width="medium", options=sopts_up),
+            },
+            key="up_act_editor"
+        )
+
+        wt_sum_up = up_edited["Weight %"].sum() if len(up_edited) > 0 else 0
+        ua_info, ua_norm, ua_save = st.columns([3, 1, 1])
+        ua_info.markdown(
+            f"**{len(up_edited)} activities** · Weight total: **{wt_sum_up:.1f}%** "
+            f"{'✅' if abs(wt_sum_up - 100) < 1 else '⚠️ should sum to 100%'}")
+        if ua_norm.button("⚖️ Normalize", use_container_width=True, key="ua_norm"):
+            if wt_sum_up > 0:
+                up_edited["Weight %"] = (up_edited["Weight %"] / wt_sum_up * 100).round(2)
+                st.info("Normalized. Click 💾 Save Activities to apply.")
+        if ua_save.button("💾 Save Activities", use_container_width=True, type="primary", key="ua_save"):
+            for i, row in up_edited.iterrows():
+                name_v = str(row.get("Name (EN)","")).strip()
+                if not name_v: continue
+                st_raw2 = str(row.get("Status","Not Started"))
+                data["activities"][i]["name"]         = name_v
+                data["activities"][i]["weight"]        = float(row.get("Weight %", 0) or 0)
+                data["activities"][i]["planned_cost"]  = float(row.get("Planned Cost", 0) or 0)
+                data["activities"][i]["start_month"]   = int(row.get("Start M", 1) or 1)
+                data["activities"][i]["end_month"]     = int(row.get("End M", 1) or 1)
+                data["activities"][i]["status"]        = SMAP.get(st_raw2, st_raw2)
+            save_data(data)
+            st.success("✅ Activities saved!"); st.rerun()
 
     st.markdown(f"Double-click any cell to edit. Current month: **M{cm} — {labels[cm-1] if cm<=N else 'N/A'}** (highlighted).")
 
@@ -1048,6 +1303,61 @@ elif page=="📝 Update Progress":
                     data["activities"][i].setdefault("actuals",{})[str(m)] = float(val)
         save_data(data)
         st.success("✅ Progress saved!"); st.rerun()
+
+    # ── Actual Cost Input ──────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 💰 Actual Cost per Month (฿)")
+    budget_up = data.get("total_budget", 0)
+
+    wbh1, wbh2 = st.columns([5,1])
+    wbh1.caption("Enter actual expenditure (฿) per month per activity. Leave 0 if not yet spent.")
+    if wbh2.button("📐 Fill from Weight", help="Auto-set Budget: Weight% × Total Budget",
+                   use_container_width=True):
+        for a in data["activities"]:
+            a["planned_cost"] = round(a.get("weight",0)/100*budget_up, 2)
+        save_data(data); st.success("✅ Budgets computed from weights."); st.rerun()
+
+    crows = []
+    for a in acts:
+        pc = a.get("planned_cost",0) or round(a.get("weight",0)/100*budget_up, 2)
+        row = {"No": a["no"], "Activity": a["name"][:40], "Budget": float(pc)}
+        for m in range(1, N+1):
+            in_range = a["start_month"] <= m <= a["end_month"]
+            row[f"C{m}"] = float(a.get("actual_costs",{}).get(str(m), 0.0)) if in_range else None
+        crows.append(row)
+
+    cdf = pd.DataFrame(crows)
+    # Force numeric columns to float64 so st.data_editor renders them as editable
+    cdf["Budget"] = pd.to_numeric(cdf["Budget"], errors="coerce").fillna(0.0)
+    for m in range(1, N+1):
+        cdf[f"C{m}"] = pd.to_numeric(cdf[f"C{m}"], errors="coerce")
+    cm_cfg2 = {}
+    for m in range(1, N+1):
+        lbl2 = f"C{m} ★" if m == cm else f"C{m}"
+        cm_cfg2[f"C{m}"] = st.column_config.NumberColumn(
+            lbl2, min_value=0.0, step=1000.0, format="%.0f", width="small")
+    cost_cfg = {
+        "No":       st.column_config.TextColumn("No",       width="small",  disabled=True),
+        "Activity": st.column_config.TextColumn("Activity", width="large",  disabled=True),
+        "Budget":   st.column_config.NumberColumn("Budget (฿) ✏️", width="medium", min_value=0.0, step=1000.0, format="%.0f"),
+        **cm_cfg2,
+    }
+    cost_edited = st.data_editor(cdf, use_container_width=True, hide_index=True,
+                                  num_rows="fixed", column_config=cost_cfg, key="cost_editor")
+    cl2, cr2 = st.columns([4,1])
+    cl2.caption("Starred column ★ = current month. Enter ฿ actually spent that month.")
+    if cr2.button("💾 Save Costs", use_container_width=True, type="primary"):
+        for i, row in cost_edited.iterrows():
+            # Save edited planned_cost (Budget column)
+            budget_val = row.get("Budget")
+            if budget_val is not None and not pd.isna(budget_val):
+                data["activities"][i]["planned_cost"] = float(budget_val)
+            # Save actual costs per month
+            for m in range(1, N+1):
+                val = row.get(f"C{m}")
+                if val is not None and not pd.isna(val):
+                    data["activities"][i].setdefault("actual_costs",{})[str(m)] = float(val)
+        save_data(data); st.success("✅ Costs saved!"); st.rerun()
 
     # ── Excel Export / Import ─────────────────────────────────────────────────
     st.markdown("---")
