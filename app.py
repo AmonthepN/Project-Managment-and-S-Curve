@@ -1487,13 +1487,7 @@ elif page=="📝 Update Progress":
     st.markdown("### 💰 Actual Cost per Month (฿)")
     budget_up = data.get("total_budget", 0)
 
-    wbh1, wbh2 = st.columns([5,1])
-    wbh1.caption("Enter actual expenditure (฿) per month per activity. Leave 0 if not yet spent.")
-    if wbh2.button("📐 Fill from Weight", help="Auto-set Budget: Weight% × Total Budget",
-                   use_container_width=True):
-        for a in data["activities"]:
-            a["planned_cost"] = round(a.get("weight",0)/100*budget_up, 2)
-        save_data(data); st.success("✅ Budgets computed from weights."); st.rerun()
+    st.caption("Enter actual expenditure (฿) per month per activity. Leave 0 if not yet spent.")
 
     crows = []
     for a in acts:
@@ -1989,7 +1983,7 @@ elif page=="⚙️ Project Setup":
 
         wt_sum = managed["Weight %"].sum() if len(managed) > 0 else 0
         cost_sum = managed["Planned Cost"].sum() if len(managed) > 0 else 0
-        c_info, c_save, c_norm = st.columns([3,1,1])
+        c_info, c_save, c_norm, c_fill = st.columns([3,1,1,1])
         c_info.markdown(
             f"**{len(managed)} activities** | Weight: **{wt_sum:.1f}%** {'✅' if abs(wt_sum-100)<1 else '⚠️ should be 100%'}"
             f" | Total cost: **฿{cost_sum:,.0f}**")
@@ -1998,6 +1992,13 @@ elif page=="⚙️ Project Setup":
             if wt_sum > 0:
                 managed["Weight %"] = (managed["Weight %"] / wt_sum * 100).round(2)
                 st.info("Weights normalized to 100%. Click 💾 Save Changes to apply.")
+
+        budget_ps = data.get("total_budget", 0)
+        if c_fill.button("📐 Fill Cost from Weight", use_container_width=True,
+                         help="Auto-set Planned Cost = Weight% × Total Budget"):
+            for a in data["activities"]:
+                a["planned_cost"] = round(a.get("weight", 0) / 100 * budget_ps, 2)
+            save_data(data); st.success("✅ Planned costs filled from weights."); st.rerun()
 
         # Show delete preview
         del_count = int(managed["Del"].sum()) if "Del" in managed.columns else 0
