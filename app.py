@@ -572,6 +572,7 @@ with st.sidebar:
     st.markdown("<div style='font-size:.68rem;font-weight:700;color:#6B6B6B;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px'>NAVIGATE</div>", unsafe_allow_html=True)
     page=st.radio("Navigate",[
         "🏠 Dashboard",
+        "📚 WBS Library",
         "⚙️ Project Setup",
         "📝 Update Progress",
         "📈 S-Curve",
@@ -1413,6 +1414,291 @@ elif page=="📝 Update Progress":
             except Exception as _e:
                 st.error(f"❌ Could not read Excel: {_e}")
 
+# ── WBS LIBRARY ───────────────────────────────────────────────────────────────
+elif page=="📚 WBS Library":
+    st.markdown("# 📚 WBS Library")
+    st.markdown("---")
+
+    MANIFEST_PATH_LIB = "projects/project_manifest.json"
+    PROJECTS_DIR_LIB  = "projects"
+
+    # ── Search + Sort controls ────────────────────────────────────────────────
+    hc1, hc2, hc3 = st.columns([3, 2, 1])
+    search_q  = hc1.text_input("🔍 Search", placeholder="project name, doc code…", label_visibility="collapsed")
+    sort_by   = hc2.selectbox("Sort by", ["updated_at","created_at","project_name","n_activities"],
+                               format_func=lambda x: {"updated_at":"Last Modified","created_at":"Date Added",
+                                                       "project_name":"Name","n_activities":"No. Tasks"}[x],
+                               label_visibility="collapsed")
+    doc_icons = {"FULL":"🌐","CM":"🏔️","CR":"🌾","LP":"🌿","PY":"💧"}
+
+    entries = db_list(sort=sort_by, search=search_q)
+    active_key = data.get("_db_key","")
+
+    if not entries:
+        st.info("No projects in library yet. Use **➕ Add Current Project** below or run `wbs_extractor.py`.")
+    else:
+        hc3.markdown(f"<div style='text-align:right;padding-top:8px;color:#6B7280'>{len(entries)} projects</div>",
+                     unsafe_allow_html=True)
+        active_entry = next((e for e in entries if e["key"] == active_key), None)
+        if active_entry:
+            st.markdown(
+                f"<div style='background:#0A0A0A;border-radius:12px;padding:10px 16px;margin-bottom:10px'>"
+                f"<span style='color:#1AE06B;font-weight:700'>▶ ACTIVE</span>&nbsp;&nbsp;"
+                f"<span style='color:#FFFFFF;font-weight:600'>{active_entry['project_name']}</span>"
+                f"<span style='color:#9B9B9B;font-size:.8rem'> ({active_entry['doc']} / {active_entry['phase']} · "
+                f"{active_entry['n_activities']} tasks)</span></div>", unsafe_allow_html=True)
+        st.markdown("---")
+
+        for e in entries:
+            icon      = doc_icons.get(e["doc"],"📁")
+            upd       = e["updated_at"][:16] if e["updated_at"] else "—"
+            cre       = e["created_at"][:16] if e["created_at"] else "—"
+            is_active = e["key"] == active_key
+            row_bg    = "background:#FFFFFF;border:1.5px solid #1AE06B;border-radius:12px;padding:4px 8px;margin-bottom:2px" if is_active else ""
+            active_badge = "&nbsp;<span style='background:#0A0A0A;color:#1AE06B;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px'>● IN USE</span>" if is_active else ""
+            if row_bg:
+                st.markdown(f"<div style='{row_bg}'>", unsafe_allow_html=True)
+            c_info, c_acts, c_bud, c_upd, c_load, c_del = st.columns([4, 1, 2, 2, 1, 1])
+            c_info.markdown(f"{icon} **{e['project_name']}**{active_badge}  \n<small style='color:#6B7280'>{e['doc']} / {e['phase']}</small>", unsafe_allow_html=True)
+            c_acts.metric("Tasks", e["n_activities"])
+            c_bud.metric("Budget", "฿{:,.0f}".format(e["total_budget"]) if e["total_budget"] else "—")
+            c_upd.markdown(f"<div style='font-size:.78rem;color:#6B7280;padding-top:6px'>✏️ {upd}<br>➕ {cre}</div>", unsafe_allow_html=True)
+            if row_bg:
+                st.markdown("</div>", unsafe_allow_html=True)
+            if c_load.button("✅ Active" if is_active else "▶ Load", key=f"lib_load_{e['key']}",
+                              disabled=is_active, type="primary" if is_active else "secondary"):
+                proj = db_get(e["key"])
+                if proj:
+                    proj["_db_key"] = e["key"]; proj["_db_doc"] = e["doc"]; proj["_db_phase"] = e["phase"]
+                    save_data(proj); db_touch(e["key"])
+                    st.success(f"✅ Loaded **{e['project_name']}** ({e['n_activities']} tasks)"); st.rerun()
+                else:
+                    st.error("Project data not found.")
+            if c_del.button("🗑️", key=f"lib_del_{e['key']}", help=f"Delete '{e['project_name']}'"):
+                db_log(e["key"], e["project_name"], "🗑️ Deleted", "Removed from library")
+                db_delete(e["key"]); st.success(f"🗑️ Deleted **{e['project_name']}**"); st.rerun()
+            st.markdown("<hr style='margin:6px 0;border-color:#E5E7EB'>", unsafe_allow_html=True)
+
+    # ── Bulk Import ───────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 📦 Import All WBS Extract Files")
+    bulk_tab1, bulk_tab2 = st.tabs(["📁 From projects/ folder (JSON)", "📄 From CSV Template"])
+
+    with bulk_tab1:
+        st.markdown("Scan the `projects/` folder and add every JSON file into the database in one click.")
+        imp_col1, imp_col2 = st.columns([3, 1])
+        json_files_lib = [f for f in os.listdir(PROJECTS_DIR_LIB) if f.endswith(".json") and f != "project_manifest.json"] if os.path.exists(PROJECTS_DIR_LIB) else []
+        imp_col1.markdown(f"<div style='padding:8px 0;color:#6B7280;font-size:.88rem'>Found <b>{len(json_files_lib)}</b> JSON files · <b>{len(db_list())}</b> in database</div>", unsafe_allow_html=True)
+        if imp_col2.button("📦 Import All JSON", use_container_width=True, type="primary", disabled=(len(json_files_lib)==0), key="lib_bulk_json"):
+            imported = errors = 0
+            existing_keys = {e["key"] for e in db_list()}
+            manifest_map = {}
+            if os.path.exists(MANIFEST_PATH_LIB):
+                with open(MANIFEST_PATH_LIB, encoding="utf-8") as _mf:
+                    for m in json.load(_mf): manifest_map[m.get("filename","")] = m
+            for fname in json_files_lib:
+                try:
+                    with open(os.path.join(PROJECTS_DIR_LIB, fname), encoding="utf-8") as _pf:
+                        proj = json.load(_pf)
+                    meta    = manifest_map.get(fname, {})
+                    raw_key = meta.get("key") or re.sub(r'[^A-Za-z0-9_]','_', fname.replace(".json",""))[:40]
+                    pname   = meta.get("project_name") or proj.get("project_name", fname)
+                    pnameth = meta.get("project_name_th","") or proj.get("project_name_th","")
+                    doc     = meta.get("doc") or proj.get("_db_doc","CUSTOM")
+                    phase   = meta.get("phase") or proj.get("_db_phase","Custom")
+                    proj["_db_key"] = raw_key; proj["_db_doc"] = doc; proj["_db_phase"] = phase
+                    db_save(raw_key, pname, pnameth, doc, phase, proj)
+                    db_log(raw_key, pname, "📦 Bulk Import", fname); imported += 1
+                except Exception: errors += 1
+            st.success(f"✅ Imported **{imported}** projects | ⚠️ Errors: {errors}"); st.rerun()
+
+    with bulk_tab2:
+        st.markdown("Upload `heymorning_task_import.csv` — every **PHASE** becomes a separate project.")
+        def _ext(notes, key):
+            m = re.search(rf'{key}: ([^\|]+)', notes or ""); return m.group(1).strip() if m else ""
+        def _mnths(notes):
+            raw = _ext(notes, "Months")
+            try: return [int(x) for x in raw.split(",") if x.strip()]
+            except: return []
+        def _wt(notes):
+            try: return float(_ext(notes, "Weight %"))
+            except: return 0.0
+        def csv_to_proj(rows, proj_name, start_date, n_months, budget):
+            acts = []
+            for i, r in enumerate(rows):
+                mnths = _mnths(r.get("NOTES",""))
+                if not mnths: continue
+                wt = _wt(r.get("NOTES",""))
+                wbs = _ext(r.get("NOTES",""), "WBS")
+                try: pc = float(_ext(r.get("NOTES",""), "Estimated cost"))
+                except: pc = 0.0
+                acts.append({"no": wbs or str(i+1), "name": r.get("TASK NAME","").strip(),
+                              "name_th": r.get("TASK NAME","").strip(), "weight": wt, "planned_cost": pc,
+                              "start_month": min(mnths), "end_month": max(mnths),
+                              "status": "❌ Not Started", "actuals": {}})
+            tot = sum(a["weight"] for a in acts)
+            if tot > 0 and abs(tot-100) > 1:
+                for a in acts: a["weight"] = round(a["weight"]/tot*100, 2)
+            return {"project_name": proj_name, "project_name_th": "", "start_date": start_date,
+                    "end_date": "", "n_months": n_months, "total_budget": budget,
+                    "contract_no": "", "project_owner": "NRCT",
+                    "contractor": "Faculty of Engineering, CMU", "activities": acts}
+
+        bulk_csv_lib = st.file_uploader("Upload WBS CSV", type=["csv"], key="lib_bulk_csv")
+        if bulk_csv_lib:
+            from collections import OrderedDict as _OD
+            reader_lib = list(csv.DictReader(io.StringIO(bulk_csv_lib.read().decode("utf-8-sig"))))
+            phase_map_lib = _OD()
+            for r in reader_lib: phase_map_lib.setdefault(r.get("PHASE","Unknown"), []).append(r)
+            st.markdown(f"**{len(reader_lib)} rows · {len(phase_map_lib)} phases**")
+            prev_lib = [{"Phase": ph, "Activities": len(rows2), "Weight Sum": f"{sum(_wt(r.get('NOTES','')) for r in rows2):.0f}%"} for ph, rows2 in phase_map_lib.items()]
+            st.dataframe(pd.DataFrame(prev_lib), use_container_width=True, hide_index=True)
+            with st.form("lib_bulk_csv_form"):
+                bc1, bc2, bc3 = st.columns(3)
+                b_start = bc1.text_input("Start Date", "2025-10-01")
+                b_nmo   = bc2.number_input("Months", 1, 36, 12)
+                b_bud   = bc3.number_input("Budget/phase (THB)", value=20723000.0, step=100000.0)
+                b_ovr   = st.checkbox("Overwrite existing", value=True)
+                if st.form_submit_button("📦 Import All Phases", use_container_width=True, type="primary"):
+                    imported = errors = 0
+                    existing_keys = {e["key"] for e in db_list()}
+                    for ph, rows2 in phase_map_lib.items():
+                        try:
+                            doc_code = _ext(rows2[0].get("NOTES",""),"Document") or re.sub(r'[^A-Za-z0-9_]','_', ph.split("/")[0].strip())[:10]
+                            pname2   = rows2[0].get("PROJECT", ph)
+                            rkey2    = re.sub(r'[^A-Za-z0-9_]','_', f"{doc_code}_{ph}")[:40]
+                            if rkey2 in existing_keys and not b_ovr: continue
+                            proj2 = csv_to_proj(rows2, pname2, b_start, int(b_nmo), float(b_bud))
+                            proj2["_db_key"] = rkey2; proj2["_db_doc"] = doc_code; proj2["_db_phase"] = ph
+                            db_save(rkey2, pname2, "", doc_code, ph, proj2)
+                            db_log(rkey2, pname2, "📦 CSV Bulk Import", f"Phase: {ph}"); imported += 1
+                        except Exception: errors += 1
+                    st.success(f"✅ Imported **{imported}** phases | ⚠️ Errors: {errors}"); st.rerun()
+        else:
+            st.info("Upload `heymorning_task_import.csv`. Each PHASE becomes a separate project.")
+
+    # ── Import single CSV/WBS ─────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("### 📄 Import Single CSV / WBS")
+    st.markdown("Upload a CSV to parse, select a phase, and import into the active project.")
+
+    def parse_wbs_csv_lib(file_bytes):
+        text = file_bytes.decode("utf-8-sig")
+        return list(csv.DictReader(io.StringIO(text)))
+    def extract_notes_lib(notes, key):
+        m = re.search(rf'{key}: ([^\|]+)', notes or ""); return m.group(1).strip() if m else ""
+    def parse_months_lib(notes):
+        raw = extract_notes_lib(notes, "Months")
+        try: return [int(x) for x in raw.split(",") if x.strip()]
+        except: return []
+    def rows_to_acts_lib(rows, normalize=True):
+        _acts = []
+        for i, r in enumerate(rows):
+            months = parse_months_lib(r.get("NOTES",""))
+            if not months: continue
+            try: wt = float(extract_notes_lib(r.get("NOTES",""), "Weight %"))
+            except: wt = 0.0
+            wbs = extract_notes_lib(r.get("NOTES",""), "WBS")
+            try: pc = float(extract_notes_lib(r.get("NOTES",""), "Estimated cost"))
+            except: pc = 0.0
+            _acts.append({"no": wbs or str(i+1), "name": r.get("TASK NAME","").strip(),
+                           "name_th": r.get("TASK NAME","").strip(), "weight": wt, "planned_cost": pc,
+                           "start_month": min(months), "end_month": max(months),
+                           "status": "❌ Not Started", "actuals": {}})
+        if normalize and _acts:
+            total = sum(a["weight"] for a in _acts)
+            if total > 0 and abs(total-100.0) > 1.0:
+                for a in _acts: a["weight"] = round(a["weight"]/total*100, 2)
+        return _acts
+
+    uploaded_lib = st.file_uploader("Upload WBS CSV file", type=["csv"], key="lib_csv_single")
+    if uploaded_lib:
+        raw_rows_lib = parse_wbs_csv_lib(uploaded_lib.read())
+        st.success(f"✅ Loaded {len(raw_rows_lib)} rows")
+        from collections import OrderedDict as _OD2
+        pm_lib = _OD2()
+        for r in raw_rows_lib: pm_lib.setdefault(r.get("PHASE","Unknown"), []).append(r)
+        ph_rows_lib = [{"Phase": ph, "Activities": len(rows2),
+                        "Weight Sum %": f"{sum(float(extract_notes_lib(r.get('NOTES',''),'Weight %') or 0) for r in rows2):.0f}",
+                        "Date Range": f"{rows2[0].get('START DATE','')} → {rows2[-1].get('DUE DATE','')}"}
+                       for ph, rows2 in pm_lib.items()]
+        st.dataframe(pd.DataFrame(ph_rows_lib), use_container_width=True, hide_index=True)
+        sel_ph_lib = st.selectbox("Select phase:", list(pm_lib.keys()), key="lib_sel_phase")
+        acts_prev_lib = rows_to_acts_lib(pm_lib[sel_ph_lib])
+        st.dataframe(pd.DataFrame([{"No": a["no"], "Task": a["name"][:50],
+                                     "Wt%": f"{a['weight']:.1f}", "Cost": f"฿{a.get('planned_cost',0):,.0f}",
+                                     "M Start": a["start_month"], "M End": a["end_month"]}
+                                    for a in acts_prev_lib]), use_container_width=True, hide_index=True)
+        with st.form("lib_single_import"):
+            c1, c2 = st.columns(2)
+            pn_lib   = c1.text_input("Project Name (EN)", f"Water Security — {sel_ph_lib}")
+            pnth_lib = c2.text_input("Project Name (TH)", "โครงการขับเคลื่อนยุทธศาสตร์น้ำมั่นคง")
+            c3,c4,c5 = st.columns(3)
+            ps_lib   = c3.text_input("Start Date", pm_lib[sel_ph_lib][0].get("START DATE","2025-10-01")[:10])
+            pe_lib   = c4.text_input("End Date",   pm_lib[sel_ph_lib][-1].get("DUE DATE","2026-09-30")[:10])
+            nm_lib   = c5.number_input("Months", 1, 36, 12)
+            bud_lib  = st.number_input("Total Budget (THB)", value=20723000.0, step=100000.0)
+            ovr_lib  = st.checkbox("⚠️ Replace current project data", value=True)
+            if st.form_submit_button("📥 Import & Save", use_container_width=True):
+                nd = {"project_name": pn_lib, "project_name_th": pnth_lib,
+                      "start_date": ps_lib, "end_date": pe_lib,
+                      "n_months": int(nm_lib), "total_budget": float(bud_lib),
+                      "contract_no": "", "project_owner": "NRCT",
+                      "contractor": "Faculty of Engineering, CMU", "activities": acts_prev_lib}
+                if ovr_lib:
+                    save_data(nd); st.success(f"✅ Imported {len(acts_prev_lib)} activities!"); st.rerun()
+                else:
+                    cur = load_data(); existing_nos = {a["no"] for a in cur["activities"]}
+                    added = 0
+                    for a in acts_prev_lib:
+                        if a["no"] not in existing_nos: cur["activities"].append(a); added += 1
+                    save_data(cur); st.success(f"✅ Merged: {added} new activities."); st.rerun()
+    else:
+        st.info("Upload your WBS CSV file above to begin.")
+
+    # ── Save current project to Library ──────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### ➕ Add Current Project to Library")
+    with st.form("lib_save_to_db"):
+        c1, c2, c3 = st.columns(3)
+        lib_name  = c1.text_input("Project Name", data["project_name"])
+        lib_doc   = c2.text_input("Document Code", "CUSTOM")
+        lib_phase = c3.text_input("Phase / Tag", "Custom")
+        lib_name_th = st.text_input("Project Name (TH)", data.get("project_name_th",""))
+        if st.form_submit_button("💾 Save to Library", use_container_width=True):
+            safe_key = re.sub(r'[^A-Za-z0-9_]','_', f"{lib_doc}_{lib_phase}")[:40]
+            sp = dict(data); sp["project_name"] = lib_name; sp["project_name_th"] = lib_name_th
+            sp["_db_key"] = safe_key; sp["_db_doc"] = lib_doc; sp["_db_phase"] = lib_phase
+            db_save(safe_key, lib_name, lib_name_th, lib_doc, lib_phase, sp)
+            db_log(safe_key, lib_name, "➕ Added to Library", f"{len(data.get('activities',[]))} activities")
+            with open(DATA_FILE,"w",encoding="utf-8") as _f: json.dump(sp,_f,ensure_ascii=False,indent=2)
+            st.cache_data.clear(); st.success(f"✅ Saved **{lib_name}** to library"); st.rerun()
+
+    # ── Activity Log ──────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 📋 Activity Log")
+    log_filter_lib = st.selectbox("Filter", ["All projects"]+[e["project_name"] for e in db_list()],
+                                   label_visibility="collapsed", key="lib_log_filter")
+    log_key_lib = None
+    if log_filter_lib != "All projects":
+        matched = [e for e in db_list() if e["project_name"]==log_filter_lib]
+        if matched: log_key_lib = matched[0]["key"]
+    log_entries_lib = db_get_log(limit=60, db_key=log_key_lib)
+    if not log_entries_lib:
+        st.info("No activity recorded yet.")
+    else:
+        st.dataframe(pd.DataFrame([{"Timestamp": e["timestamp"], "Action": e["action"],
+                                     "Project": e["project_name"][:45], "Detail": e["detail"]}
+                                    for e in log_entries_lib]),
+                     use_container_width=True, hide_index=True)
+        lc1, lc2 = st.columns([4,1])
+        lc1.caption(f"{len(log_entries_lib)} entries")
+        if lc2.button("🗑️ Clear Log", use_container_width=True, key="lib_clear_log"):
+            conn = db_connect()
+            if log_key_lib: conn.execute("DELETE FROM save_log WHERE db_key=?", (log_key_lib,))
+            else: conn.execute("DELETE FROM save_log")
+            conn.commit(); conn.close(); st.rerun()
+
 # ── PROJECT SETUP (merged) ────────────────────────────────────────────────────
 elif page=="⚙️ Project Setup":
     st.markdown("# ⚙️ Project Setup")
@@ -1421,8 +1707,8 @@ elif page=="⚙️ Project Setup":
     MANIFEST_PATH = "projects/project_manifest.json"
     PROJECTS_DIR  = "projects"
 
-    tab1, tab2, tab4 = st.tabs([
-        "📋 Project Info", "📚 WBS Library & Import", "✏️ Activities"
+    tab1, tab4 = st.tabs([
+        "📋 Project Info", "✏️ Activities"
     ])
 
     # ── TAB 1: Project Info ───────────────────────────────────────────────────
@@ -1456,460 +1742,6 @@ elif page=="⚙️ Project Setup":
                 "Start M":a["start_month"],"End M":a["end_month"],"Status":a.get("status","—")} for a in acts])
             st.dataframe(df,use_container_width=True,hide_index=True,
                          column_config={"Planned Cost (฿)": st.column_config.NumberColumn(format="฿%.0f")})
-
-    # ── TAB 2: WBS Library ────────────────────────────────────────────────────
-    with tab2:
-        st.markdown("### 📚 WBS Library")
-
-        # ── Search + Sort controls ────────────────────────────────────────────
-        hc1, hc2, hc3 = st.columns([3, 2, 1])
-        search_q  = hc1.text_input("🔍 Search", placeholder="project name, doc code…", label_visibility="collapsed")
-        sort_by   = hc2.selectbox("Sort by", ["updated_at","created_at","project_name","n_activities"],
-                                   format_func=lambda x: {"updated_at":"Last Modified","created_at":"Date Added",
-                                                           "project_name":"Name","n_activities":"No. Tasks"}[x],
-                                   label_visibility="collapsed")
-        doc_icons = {"FULL":"🌐","CM":"🏔️","CR":"🌾","LP":"🌿","PY":"💧"}
-
-        entries = db_list(sort=sort_by, search=search_q)
-        active_key = data.get("_db_key","")   # currently loaded project key
-
-        if not entries:
-            st.info("No projects in library yet. Use **➕ Add Current Project** below or run `wbs_extractor.py`.")
-        else:
-            hc3.markdown(f"<div style='text-align:right;padding-top:8px;color:#6B7280'>{len(entries)} projects</div>",
-                         unsafe_allow_html=True)
-
-            # Active project banner
-            active_entry = next((e for e in entries if e["key"] == active_key), None)
-            if active_entry:
-                st.markdown(
-                    f"<div style='background:#0A0A0A;border-radius:12px;"
-                    f"padding:10px 16px;margin-bottom:10px;display:flex;align-items:center;gap:10px'>"
-                    f"<span style='color:#1AE06B;font-size:.8rem;font-weight:700'>▶ ACTIVE</span>"
-                    f"<span style='color:#FFFFFF;font-weight:600'>{active_entry['project_name']}</span>"
-                    f"<span style='color:#9B9B9B;font-size:.8rem'>({active_entry['doc']} / {active_entry['phase']} · "
-                    f"{active_entry['n_activities']} tasks)</span></div>",
-                    unsafe_allow_html=True)
-
-            st.markdown("---")
-
-            for e in entries:
-                icon     = doc_icons.get(e["doc"],"📁")
-                upd      = e["updated_at"][:16] if e["updated_at"] else "—"
-                cre      = e["created_at"][:16] if e["created_at"] else "—"
-                is_active = e["key"] == active_key
-
-                # Row highlight for active project
-                row_bg  = "background:#FFFFFF;border:1.5px solid #1AE06B;border-radius:12px;padding:4px 8px;margin-bottom:2px" if is_active else ""
-                active_badge = "&nbsp;<span style='background:#0A0A0A;color:#1AE06B;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:10px'>● IN USE</span>" if is_active else ""
-
-                if row_bg:
-                    st.markdown(f"<div style='{row_bg}'>", unsafe_allow_html=True)
-
-                c_info, c_acts, c_bud, c_upd, c_load, c_del = st.columns([4, 1, 2, 2, 1, 1])
-                c_info.markdown(
-                    f"{icon} **{e['project_name']}**{active_badge}  \n"
-                    f"<small style='color:#6B7280'>{e['doc']} / {e['phase']}</small>",
-                    unsafe_allow_html=True)
-                c_acts.metric("Tasks", e["n_activities"])
-                c_bud.metric("Budget", "฿{:,.0f}".format(e["total_budget"]) if e["total_budget"] else "—")
-                c_upd.markdown(
-                    f"<div style='font-size:.78rem;color:#6B7280;padding-top:6px'>"
-                    f"✏️ {upd}<br>➕ {cre}</div>",
-                    unsafe_allow_html=True)
-
-                if row_bg:
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                if c_load.button("✅ Active" if is_active else "▶ Load",
-                                  key=f"db_load_{e['key']}",
-                                  disabled=is_active,
-                                  type="primary" if is_active else "secondary"):
-                    proj = db_get(e["key"])
-                    if proj:
-                        # Stamp DB tracking keys so every subsequent save_data() syncs back
-                        proj["_db_key"]   = e["key"]
-                        proj["_db_doc"]   = e["doc"]
-                        proj["_db_phase"] = e["phase"]
-                        save_data(proj)
-                        db_touch(e["key"])
-                        st.success(f"✅ Loaded **{e['project_name']}** ({e['n_activities']} tasks)")
-                        st.rerun()
-                    else:
-                        st.error("Project data not found in database.")
-
-                if c_del.button("🗑️", key=f"db_del_{e['key']}", help=f"Delete '{e['project_name']}'"):
-                    db_log(e["key"], e["project_name"], "🗑️ Deleted", "Removed from library")
-                    db_delete(e["key"])
-                    st.success(f"🗑️ Deleted **{e['project_name']}**")
-                    st.rerun()
-
-                st.markdown("<hr style='margin:6px 0;border-color:#E5E7EB'>", unsafe_allow_html=True)
-
-        # ── Bulk Import all WBS Extract Files ────────────────────────────────
-        st.markdown("---")
-        st.markdown("#### 📦 Import All WBS Extract Files")
-
-        bulk_tab1, bulk_tab2 = st.tabs(["📁 From projects/ folder (JSON)", "📄 From CSV Template"])
-
-        # ── BULK TAB 1: JSON files ────────────────────────────────────────────
-        with bulk_tab1:
-            st.markdown("Scan the `projects/` folder and add every JSON file into the database in one click.")
-            imp_col1, imp_col2 = st.columns([3, 1])
-            json_files = []
-            if os.path.exists(PROJECTS_DIR):
-                json_files = [f for f in os.listdir(PROJECTS_DIR)
-                              if f.endswith(".json") and f != "project_manifest.json"]
-            imp_col1.markdown(
-                f"<div style='padding:8px 0;color:#6B7280;font-size:.88rem'>"
-                f"Found <b style='color:#1F2937'>{len(json_files)}</b> JSON files in "
-                f"<code>projects/</code> · "
-                f"<b style='color:#1F2937'>{len(db_list())}</b> already in database</div>",
-                unsafe_allow_html=True)
-            if imp_col2.button("📦 Import All JSON", use_container_width=True, type="primary",
-                               disabled=(len(json_files)==0), key="bulk_json"):
-                imported = errors = 0
-                existing_keys = {e["key"] for e in db_list()}
-                manifest_map = {}
-                if os.path.exists(MANIFEST_PATH):
-                    with open(MANIFEST_PATH, encoding="utf-8") as _mf:
-                        for m in json.load(_mf):
-                            manifest_map[m.get("filename","")] = m
-                for fname in json_files:
-                    fpath = os.path.join(PROJECTS_DIR, fname)
-                    try:
-                        with open(fpath, encoding="utf-8") as _pf:
-                            proj = json.load(_pf)
-                        meta    = manifest_map.get(fname, {})
-                        raw_key = meta.get("key") or re.sub(r'[^A-Za-z0-9_]','_', fname.replace(".json",""))[:40]
-                        pname   = meta.get("project_name") or proj.get("project_name", fname)
-                        pnameth = meta.get("project_name_th","") or proj.get("project_name_th","")
-                        doc     = meta.get("doc") or proj.get("_db_doc","CUSTOM")
-                        phase   = meta.get("phase") or proj.get("_db_phase","Custom")
-                        proj["_db_key"] = raw_key; proj["_db_doc"] = doc; proj["_db_phase"] = phase
-                        db_save(raw_key, pname, pnameth, doc, phase, proj)
-                        db_log(raw_key, pname, "📦 Bulk Import", f"{fname}")
-                        imported += 1
-                    except Exception:
-                        errors += 1
-                st.success(f"✅ Imported **{imported}** projects | ⚠️ Errors: {errors}")
-                st.rerun()
-
-        # ── BULK TAB 2: CSV template ──────────────────────────────────────────
-        with bulk_tab2:
-            st.markdown("Upload `heymorning_task_import.csv` — every **PHASE** becomes a separate project in the database automatically.")
-
-            # CSV helpers (reuse from tab2 if defined, or redefine inline)
-            def _extract(notes, key):
-                m = re.search(rf'{key}: ([^\|]+)', notes or "")
-                return m.group(1).strip() if m else ""
-            def _months(notes):
-                raw = _extract(notes, "Months")
-                try: return [int(x) for x in raw.split(",") if x.strip()]
-                except: return []
-            def _weight(notes):
-                try: return float(_extract(notes, "Weight %"))
-                except: return 0.0
-
-            def csv_rows_to_project(rows, phase, proj_name, start_date, n_months, budget):
-                acts = []
-                for i, r in enumerate(rows):
-                    mnths = _months(r.get("NOTES",""))
-                    if not mnths: continue
-                    wt = _weight(r.get("NOTES",""))
-                    wbs = _extract(r.get("NOTES",""), "WBS")
-                    try: pc = float(_extract(r.get("NOTES",""), "Estimated cost"))
-                    except: pc = 0.0
-                    acts.append({"no": wbs or str(i+1),
-                                 "name": r.get("TASK NAME","").strip(),
-                                 "name_th": r.get("TASK NAME","").strip(),
-                                 "weight": wt, "planned_cost": pc,
-                                 "start_month": min(mnths),
-                                 "end_month": max(mnths),
-                                 "status": "❌ Not Started", "actuals": {}})
-                # Normalize weights
-                tot = sum(a["weight"] for a in acts)
-                if tot > 0 and abs(tot-100) > 1:
-                    for a in acts: a["weight"] = round(a["weight"]/tot*100, 2)
-                return {"project_name": proj_name, "project_name_th": "",
-                        "start_date": start_date, "end_date": "",
-                        "n_months": n_months, "total_budget": budget,
-                        "contract_no": "", "project_owner": "NRCT",
-                        "contractor": "Faculty of Engineering, CMU",
-                        "activities": acts}
-
-            bulk_csv = st.file_uploader("Upload WBS CSV", type=["csv"], key="bulk_csv_up")
-
-            if bulk_csv:
-                raw_text = bulk_csv.read().decode("utf-8-sig")
-                reader = list(csv.DictReader(io.StringIO(raw_text)))
-
-                # Group by PHASE
-                from collections import OrderedDict as _OD
-                phase_map = _OD()
-                for r in reader:
-                    phase_map.setdefault(r.get("PHASE","Unknown"), []).append(r)
-
-                st.markdown(f"**{len(reader)} rows · {len(phase_map)} phases detected**")
-
-                # Preview table
-                prev_rows = []
-                for ph, rows2 in phase_map.items():
-                    wts = []
-                    for r in rows2:
-                        try: wts.append(_weight(r.get("NOTES","")))
-                        except: pass
-                    doc_code = _extract(rows2[0].get("NOTES",""),"Document") or ph.split("/")[0].strip()
-                    prev_rows.append({"Phase": ph, "Doc": doc_code,
-                                      "Activities": len(rows2),
-                                      "Weight Sum": f"{sum(wts):.0f}%"})
-                st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
-
-                # Common settings
-                with st.form("bulk_csv_form"):
-                    bc1, bc2, bc3 = st.columns(3)
-                    b_start   = bc1.text_input("Start Date", "2025-10-01")
-                    b_nmonths = bc2.number_input("Months", 1, 36, 12)
-                    b_budget  = bc3.number_input("Budget per phase (THB)", value=20723000.0, step=100000.0)
-                    b_overwrite = st.checkbox("Overwrite existing entries with same key", value=True)
-
-                    if st.form_submit_button("📦 Import All Phases to Database", use_container_width=True, type="primary"):
-                        imported = errors = 0
-                        existing_keys = {e["key"] for e in db_list()}
-                        for ph, rows2 in phase_map.items():
-                            try:
-                                doc_code = _extract(rows2[0].get("NOTES",""),"Document") or re.sub(r'[^A-Za-z0-9_]','_',ph.split("/")[0].strip())[:10]
-                                proj_name = rows2[0].get("PROJECT", ph)
-                                raw_key = re.sub(r'[^A-Za-z0-9_]','_', f"{doc_code}_{ph}")[:40]
-
-                                if raw_key in existing_keys and not b_overwrite:
-                                    continue
-
-                                proj = csv_rows_to_project(rows2, ph, proj_name,
-                                                           b_start, int(b_nmonths), float(b_budget))
-                                proj["_db_key"]   = raw_key
-                                proj["_db_doc"]   = doc_code
-                                proj["_db_phase"] = ph
-
-                                db_save(raw_key, proj_name, "", doc_code, ph, proj)
-                                db_log(raw_key, proj_name, "📦 CSV Bulk Import",
-                                       f"Phase: {ph} · {len(proj['activities'])} activities")
-                                imported += 1
-                            except Exception as _ex:
-                                errors += 1
-
-                        st.success(f"✅ Imported **{imported}** phases as projects | ⚠️ Errors: {errors}")
-                        st.rerun()
-            else:
-                st.info("Upload your `heymorning_task_import.csv` file above. Each PHASE column value becomes a separate project entry in the database.")
-                st.code("Expected columns: PROJECT, PHASE, TASK NAME, ..., NOTES\nNOTES must contain: WBS: | Document: | Months: | Weight %: | Estimated cost:", language="text")
-
-        st.markdown("---")
-        # ── Save current project to DB ────────────────────────────────────────
-        st.markdown("#### ➕ Add Current Project to Library")
-        with st.form("save_to_db"):
-            c1, c2, c3 = st.columns(3)
-            lib_name  = c1.text_input("Project Name", data["project_name"])
-            lib_doc   = c2.text_input("Document Code", "CUSTOM")
-            lib_phase = c3.text_input("Phase / Tag", "Custom")
-            lib_name_th = st.text_input("Project Name (TH)", data.get("project_name_th",""))
-            if st.form_submit_button("💾 Save to Library", use_container_width=True):
-                safe_key = re.sub(r'[^A-Za-z0-9_]', '_', f"{lib_doc}_{lib_phase}")[:40]
-                save_proj = dict(data)
-                save_proj["project_name"]    = lib_name
-                save_proj["project_name_th"] = lib_name_th
-                # Stamp tracking keys so future edits auto-sync
-                save_proj["_db_key"]   = safe_key
-                save_proj["_db_doc"]   = lib_doc
-                save_proj["_db_phase"] = lib_phase
-                db_save(safe_key, lib_name, lib_name_th, lib_doc, lib_phase, save_proj)
-                db_log(safe_key, lib_name, "➕ Added to Library",
-                       f"{len(data.get('activities',[]))} activities")
-                # Also write back to project_data.json so the tracking keys persist immediately
-                with open(DATA_FILE, "w", encoding="utf-8") as _f:
-                    json.dump(save_proj, _f, ensure_ascii=False, indent=2)
-                st.cache_data.clear()
-                st.success(f"✅ Saved **{lib_name}** to database — edits will now auto-sync")
-                st.rerun()
-
-        # ── Activity Log ──────────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown("#### 📋 Activity Log")
-
-        log_filter = st.selectbox("Filter by project", ["All projects"] + [e["project_name"] for e in db_list()],
-                                   label_visibility="collapsed", key="log_filter")
-        log_key = None
-        if log_filter != "All projects":
-            matched = [e for e in db_list() if e["project_name"] == log_filter]
-            if matched: log_key = matched[0]["key"]
-
-        log_entries = db_get_log(limit=60, db_key=log_key)
-
-        if not log_entries:
-            st.info("No activity recorded yet. Load or save a project to start logging.")
-        else:
-            action_colors = {
-                "💾 Saved":           "#2563EB",
-                "▶ Loaded":           "#16A34A",
-                "➕ Added to Library": "#D97706",
-                "🗑️ Deleted":         "#DC2626",
-            }
-            log_df = pd.DataFrame([{
-                "Timestamp":    e["timestamp"],
-                "Action":       e["action"],
-                "Project":      e["project_name"][:45],
-                "Detail":       e["detail"],
-            } for e in log_entries])
-
-            st.dataframe(
-                log_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Timestamp": st.column_config.TextColumn("🕐 Time",    width="medium"),
-                    "Action":    st.column_config.TextColumn("Action",      width="small"),
-                    "Project":   st.column_config.TextColumn("Project",     width="large"),
-                    "Detail":    st.column_config.TextColumn("Detail",      width="large"),
-                }
-            )
-
-            lc1, lc2 = st.columns([4,1])
-            lc1.caption(f"{len(log_entries)} entries shown")
-            if lc2.button("🗑️ Clear Log", use_container_width=True):
-                conn = db_connect()
-                if log_key:
-                    conn.execute("DELETE FROM save_log WHERE db_key=?", (log_key,))
-                else:
-                    conn.execute("DELETE FROM save_log")
-                conn.commit(); conn.close()
-                st.rerun()
-
-    with tab2:
-        st.markdown("---")
-        st.markdown("### 📄 Import CSV / WBS")
-        st.markdown("Upload `heymorning_task_import.csv` to parse, select a phase, and import into the active project.")
-
-        def parse_wbs_csv(file_bytes):
-            text = file_bytes.decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(text))
-            return list(reader)
-
-        def extract_notes(notes, key):
-            m = re.search(rf'{key}: ([^\|]+)', notes or "")
-            return m.group(1).strip() if m else ""
-
-        def parse_months(notes):
-            raw = extract_notes(notes, "Months")
-            try: return [int(x) for x in raw.split(",") if x.strip()]
-            except: return []
-
-        def rows_to_activities(rows, normalize=True):
-            _acts = []
-            for i, r in enumerate(rows):
-                months = parse_months(r.get("NOTES",""))
-                if not months: continue
-                wt_raw = extract_notes(r.get("NOTES",""), "Weight %")
-                try: wt = float(wt_raw)
-                except: wt = 0.0
-                wbs = extract_notes(r.get("NOTES",""), "WBS")
-                cost_raw = extract_notes(r.get("NOTES",""), "Estimated cost")
-                try: planned_cost = float(cost_raw)
-                except: planned_cost = 0.0
-                _acts.append({
-                    "no": wbs or str(i+1),
-                    "name": r.get("TASK NAME","").strip(),
-                    "name_th": r.get("TASK NAME","").strip(),
-                    "weight": wt, "planned_cost": planned_cost,
-                    "start_month": min(months), "end_month": max(months),
-                    "status": "❌ Not Started", "actuals": {}
-                })
-            if normalize and _acts:
-                total = sum(a["weight"] for a in _acts)
-                if total > 0 and abs(total - 100.0) > 1.0:
-                    for a in _acts: a["weight"] = round(a["weight"] / total * 100, 2)
-            return _acts
-
-        uploaded = st.file_uploader("Upload WBS CSV file", type=["csv"],
-                                    help="Export from AI extraction pipeline as heymorning_task_import.csv",
-                                    key="csv_upload_tab3")
-
-        if uploaded:
-            raw_rows = parse_wbs_csv(uploaded.read())
-            st.success(f"✅ Loaded {len(raw_rows)} activities from CSV")
-
-            from collections import OrderedDict
-            phase_map = OrderedDict()
-            for r in raw_rows:
-                ph = r.get("PHASE","Unknown")
-                phase_map.setdefault(ph, []).append(r)
-
-            st.markdown("---")
-            st.markdown("### Step 1 — Select Sub-Project / Phase")
-            st.caption(f"{len(phase_map)} phases found in CSV")
-
-            ph_rows = []
-            for ph, rows2 in phase_map.items():
-                wts = []
-                for r in rows2:
-                    try: wts.append(float(extract_notes(r.get("NOTES",""),"Weight %")))
-                    except: pass
-                ph_rows.append({"Phase": ph, "Activities": len(rows2),
-                                "Weight Sum %": f"{sum(wts):.0f}",
-                                "Date Range": f"{rows2[0].get('START DATE','')} → {rows2[-1].get('DUE DATE','')}"})
-            st.dataframe(pd.DataFrame(ph_rows), use_container_width=True, hide_index=True)
-
-            sel_phase = st.selectbox("Select phase to import:", list(phase_map.keys()), key="sel_phase_t3")
-            phase_rows = phase_map[sel_phase]
-            acts_preview = rows_to_activities(phase_rows, normalize=True)
-
-            st.markdown("---")
-            st.markdown(f"### Step 2 — Preview: **{sel_phase}** ({len(acts_preview)} activities)")
-            prev_df = pd.DataFrame([{
-                "No": a["no"], "Task Name": a["name"][:50],
-                "Weight %": f"{a['weight']:.1f}",
-                "Cost(฿)": f"฿{a.get('planned_cost',0):,.0f}",
-                "M Start": a["start_month"], "M End": a["end_month"]
-            } for a in acts_preview])
-            st.dataframe(prev_df, use_container_width=True, hide_index=True)
-
-            st.markdown("---")
-            st.markdown("### Step 3 — Project Settings")
-            with st.form("wbs_import_form"):
-                c1, c2 = st.columns(2)
-                proj_name   = c1.text_input("Project Name (EN)", f"Water Security — {sel_phase}")
-                proj_name_th= c2.text_input("Project Name (TH)", "โครงการขับเคลื่อนยุทธศาสตร์น้ำมั่นคง")
-                c3, c4, c5  = st.columns(3)
-                p_start = c3.text_input("Start Date", phase_rows[0].get("START DATE","2025-10-01")[:10])
-                p_end   = c4.text_input("End Date",   phase_rows[-1].get("DUE DATE","2026-09-30")[:10])
-                n_mo    = c5.number_input("Months", 1, 36, 12)
-                budget  = st.number_input("Total Budget (THB)", value=20723000.0, step=100000.0)
-                overwrite = st.checkbox("⚠️ Replace current project data", value=True)
-                submitted = st.form_submit_button("📥 Import & Save", use_container_width=True)
-                if submitted:
-                    new_data = {
-                        "project_name": proj_name, "project_name_th": proj_name_th,
-                        "start_date": p_start, "end_date": p_end,
-                        "n_months": int(n_mo), "total_budget": float(budget),
-                        "contract_no": "", "project_owner": "NRCT",
-                        "contractor": "Faculty of Engineering, CMU",
-                        "activities": acts_preview
-                    }
-                    if overwrite:
-                        save_data(new_data)
-                        st.success(f"✅ Imported {len(acts_preview)} activities from **{sel_phase}**!")
-                        st.rerun()
-                    else:
-                        current = load_data()
-                        existing_nos = {a["no"] for a in current["activities"]}
-                        added = 0
-                        for a in acts_preview:
-                            if a["no"] not in existing_nos:
-                                current["activities"].append(a); added += 1
-                        save_data(current)
-                        st.success(f"✅ Merged: added {added} new activities."); st.rerun()
-        else:
-            st.info("Upload your WBS CSV file above to begin.")
-            st.code("PROJECT, PHASE, TASK NAME, DESCRIPTION, IMPORTANT, URGENT, STATUS, PRIORITY, ASSIGNED TO, START DATE, DUE DATE, KANBAN STAGE, PROGRESS, NOTES")
 
     with tab4:
         st.markdown("### ✏️ Manage Current Project Activities")
