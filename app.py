@@ -1479,7 +1479,7 @@ elif page=="📝 Update Progress":
             )
 
             wt_sum_up = up_edited["Weight %"].sum() if len(up_edited) > 0 else 0
-            ua_info, ua_norm, ua_save = st.columns([3, 1, 1])
+            ua_info, ua_norm, ua_fill, ua_save = st.columns([3, 1, 1, 1])
             ua_info.markdown(
                 f"**{len(up_edited)} activities** · Weight total: **{wt_sum_up:.1f}%** "
                 f"{'✅' if abs(wt_sum_up - 100) < 1 else '⚠️ should sum to 100%'}")
@@ -1487,6 +1487,12 @@ elif page=="📝 Update Progress":
                 if wt_sum_up > 0:
                     up_edited["Weight %"] = (up_edited["Weight %"] / wt_sum_up * 100).round(2)
                     st.info("Normalized. Click 💾 Save Activities to apply.")
+            budget_up_fill = data.get("total_budget", 0)
+            if ua_fill.button("📐 Fill Cost", use_container_width=True, key="ua_fill",
+                              help="Auto-set Budget: Weight% × Total Budget"):
+                for a in data["activities"]:
+                    a["planned_cost"] = round(a.get("weight", 0) / 100 * budget_up_fill, 2)
+                save_data(data); st.success("✅ Planned costs filled from weights."); st.rerun()
             if ua_save.button("💾 Save Activities", use_container_width=True, type="primary", key="ua_save"):
                 for i, row in up_edited.iterrows():
                     name_v = str(row.get("Name (EN)","")).strip()
