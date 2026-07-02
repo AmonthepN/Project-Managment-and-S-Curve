@@ -1933,6 +1933,7 @@ elif page=="⚙️ Project Setup":
         for a in acts:
             sk = next((k for k in sopts_manage if k in a.get("status","")), sopts_manage[0])
             mrows.append({
+                "Del":            False,
                 "No":             a.get("no",""),
                 "Name (EN)":      a.get("name",""),
                 "Name (TH)":      a.get("name_th",""),
@@ -1944,7 +1945,9 @@ elif page=="⚙️ Project Setup":
             })
 
         mdf = pd.DataFrame(mrows) if mrows else pd.DataFrame(
-            columns=["No","Name (EN)","Name (TH)","Weight %","Planned Cost","Start M","End M","Status"])
+            columns=["Del","No","Name (EN)","Name (TH)","Weight %","Planned Cost","Start M","End M","Status"])
+
+        st.info("☑️ Check **Del** on any row then click **💾 Save Changes** to delete it. Click ＋ at the bottom to add new rows.", icon="ℹ️")
 
         managed = st.data_editor(
             mdf,
@@ -1952,6 +1955,7 @@ elif page=="⚙️ Project Setup":
             hide_index=True,
             num_rows="dynamic",
             column_config={
+                "Del":          st.column_config.CheckboxColumn("🗑️ Del", width="small", help="Check to delete this row on save"),
                 "No":           st.column_config.TextColumn("No", width="small"),
                 "Name (EN)":    st.column_config.TextColumn("Name (EN)", width="large"),
                 "Name (TH)":    st.column_config.TextColumn("Name (TH)", width="medium"),
@@ -1976,9 +1980,16 @@ elif page=="⚙️ Project Setup":
                 managed["Weight %"] = (managed["Weight %"] / wt_sum * 100).round(2)
                 st.info("Weights normalized to 100%. Click 💾 Save Changes to apply.")
 
+        # Show delete preview
+        del_count = int(managed["Del"].sum()) if "Del" in managed.columns else 0
+        if del_count > 0:
+            st.warning(f"⚠️ {del_count} row(s) marked for deletion. Click **💾 Save Changes** to confirm.", icon="⚠️")
+
         if c_save.button("💾 Save Changes", use_container_width=True, type="primary"):
             new_acts = []
             for _, row in managed.iterrows():
+                # Skip rows marked for deletion
+                if row.get("Del", False): continue
                 name = str(row.get("Name (EN)","")).strip()
                 if not name: continue
                 st_raw = str(row.get("Status","Not Started"))
