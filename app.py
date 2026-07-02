@@ -700,6 +700,75 @@ if page=="🏠 Dashboard":
                 f'<span class="{SCLS[sk]}">{sk}</span></div>',
                 unsafe_allow_html=True)
 
+    # ── COST & BUDGET CHARTS ──────────────────────────────────────────────────
+    st.markdown("")
+    ch_left, ch_right = st.columns(2)
+
+    with ch_left:
+        st.markdown('<div class="sec">💰 C O S T &nbsp; S - C U R V E</div>', unsafe_allow_html=True)
+        fig_c = go.Figure()
+        # Budget ceiling line
+        fig_c.add_hline(y=budget_d, line_dash="dot", line_color="#CC2222", line_width=1.5)
+        fig_c.add_annotation(x=1, xref="paper", y=budget_d,
+            text=f"Budget ฿{budget_d/1e6:.2f}M", showarrow=False,
+            font=dict(color="#CC2222", size=10), xanchor="right", yanchor="bottom")
+        # Planned cost curve
+        pc_vals = [v for v in cum_pc]
+        fig_c.add_trace(go.Scatter(
+            x=labels, y=pc_vals, name="Planned Cost",
+            fill="tozeroy", fillcolor="rgba(10,10,10,.06)",
+            line=dict(color="#0A0A0A", width=2.5),
+            mode="lines+markers", marker=dict(size=6),
+            hovertemplate="<b>%{x}</b><br>Planned: ฿%{y:,.0f}<extra></extra>"))
+        # Actual cost curve
+        ac_x = [labels[i] for i, v in enumerate(cum_ac) if v is not None]
+        ac_y = [v for v in cum_ac if v is not None]
+        if ac_y:
+            fig_c.add_trace(go.Scatter(
+                x=ac_x, y=ac_y, name="Actual Cost",
+                fill="tozeroy", fillcolor="rgba(26,224,107,.15)",
+                line=dict(color="#1AE06B", width=2.5),
+                mode="lines+markers", marker=dict(size=8, symbol="diamond"),
+                hovertemplate="<b>%{x}</b><br>Actual: ฿%{y:,.0f}<extra></extra>"))
+        if cm <= N:
+            fig_c.add_vline(x=labels[cm-1], line_dash="dash",
+                            line_color="#1AE06B", line_width=2)
+        fig_c.update_layout(
+            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font_color="#0A0A0A", height=270,
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(gridcolor="#F0F0F0", showline=False),
+            yaxis=dict(gridcolor="#F0F0F0", tickformat=",.0f"),
+            legend=dict(bgcolor="#FFFFFF", font=dict(color="#0A0A0A")),
+            hovermode="x unified")
+        st.plotly_chart(fig_c, use_container_width=True)
+
+    with ch_right:
+        st.markdown('<div class="sec">📊 M O N T H L Y &nbsp; S P E N D</div>', unsafe_allow_html=True)
+        fig_m = go.Figure()
+        fig_m.add_trace(go.Bar(
+            x=labels, y=monthly_pc, name="Planned",
+            marker_color="rgba(10,10,10,.18)",
+            hovertemplate="<b>%{x}</b><br>Planned: ฿%{y:,.0f}<extra></extra>"))
+        ac_monthly = [v if v is not None else 0 for v in monthly_ac]
+        fig_m.add_trace(go.Bar(
+            x=labels, y=ac_monthly, name="Actual",
+            marker_color="#1AE06B",
+            hovertemplate="<b>%{x}</b><br>Actual: ฿%{y:,.0f}<extra></extra>"))
+        # Highlight current month
+        if cm <= N:
+            fig_m.add_vline(x=labels[cm-1], line_dash="dash",
+                            line_color="#0A0A0A", line_width=1.5)
+        fig_m.update_layout(
+            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font_color="#0A0A0A", height=270, barmode="group",
+            margin=dict(l=10, r=10, t=10, b=10),
+            xaxis=dict(gridcolor="#F0F0F0", showline=False),
+            yaxis=dict(gridcolor="#F0F0F0", tickformat=",.0f"),
+            legend=dict(bgcolor="#FFFFFF", font=dict(color="#0A0A0A")),
+            hovermode="x unified")
+        st.plotly_chart(fig_m, use_container_width=True)
+
     # ── ACTIVE THIS MONTH spotlight ───────────────────────────────────────────
     active_acts = [a for a in acts if a["start_month"] <= cm <= a["end_month"]]
     if active_acts:
