@@ -1442,71 +1442,73 @@ elif page=="📝 Update Progress":
     sopts_raw = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
 
 
-    up_tab1, up_tab2 = st.tabs(["📊 Progress", "💰 Actual Cost"])
+    up_tab0, up_tab1, up_tab2 = st.tabs(["✏️ Activities", "📊 Progress", "💰 Actual Cost"])
 
+    # ── TAB 0: Edit Activities ────────────────────────────────────────────────
+    with up_tab0:
+        st.markdown("### ✏️ Edit Activities")
+        st.caption("Edit activity names, weights, dates, planned cost and status. Click 💾 Save Activities when done.")
+        sopts_up = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
+        up_rows = []
+        for a in acts:
+            sk2 = next((k for k in sopts_up if k in a.get("status","")), sopts_up[0])
+            up_rows.append({
+                "No":           a.get("no",""),
+                "Name (EN)":    a.get("name",""),
+                "Weight %":     float(a.get("weight", 0)),
+                "Planned Cost": float(a.get("planned_cost", 0)),
+                "Start M":      int(a.get("start_month", 1)),
+                "End M":        int(a.get("end_month", 1)),
+                "Status":       sk2,
+            })
+        up_df = pd.DataFrame(up_rows) if up_rows else pd.DataFrame(
+            columns=["No","Name (EN)","Weight %","Planned Cost","Start M","End M","Status"])
+
+        up_edited = st.data_editor(
+            up_df, use_container_width=True, hide_index=True, num_rows="fixed",
+            column_config={
+                "No":           st.column_config.TextColumn("No",        width="small",  disabled=True),
+                "Name (EN)":    st.column_config.TextColumn("Name (EN)", width="large"),
+                "Weight %":     st.column_config.NumberColumn("Weight %", min_value=0.0, max_value=100.0, step=0.5, format="%.2f", width="small"),
+                "Planned Cost": st.column_config.NumberColumn("Budget (฿)", min_value=0.0, step=10000.0, format="฿%.0f", width="medium"),
+                "Start M":      st.column_config.NumberColumn("Start M", min_value=1, max_value=36, step=1, width="small"),
+                "End M":        st.column_config.NumberColumn("End M",   min_value=1, max_value=36, step=1, width="small"),
+                "Status":       st.column_config.SelectboxColumn("Status", width="medium", options=sopts_up),
+            },
+            key="up_act_editor"
+        )
+
+        wt_sum_up = up_edited["Weight %"].sum() if len(up_edited) > 0 else 0
+        ua_info, ua_norm, ua_fill, ua_save = st.columns([3, 1, 1, 1])
+        ua_info.markdown(
+            f"**{len(up_edited)} activities** · Weight total: **{wt_sum_up:.1f}%** "
+            f"{'✅' if abs(wt_sum_up - 100) < 1 else '⚠️ should sum to 100%'}")
+        if ua_norm.button("⚖️ Normalize", use_container_width=True, key="ua_norm"):
+            if wt_sum_up > 0:
+                up_edited["Weight %"] = (up_edited["Weight %"] / wt_sum_up * 100).round(2)
+                st.info("Normalized. Click 💾 Save Activities to apply.")
+        budget_up_fill = data.get("total_budget", 0)
+        if ua_fill.button("📐 Fill Cost", use_container_width=True, key="ua_fill",
+                          help="Auto-set Budget: Weight% × Total Budget"):
+            for a in data["activities"]:
+                a["planned_cost"] = round(a.get("weight", 0) / 100 * budget_up_fill, 2)
+            save_data(data); st.success("✅ Planned costs filled from weights."); st.rerun()
+        if ua_save.button("💾 Save Activities", use_container_width=True, type="primary", key="ua_save"):
+            for i, row in up_edited.iterrows():
+                name_v = str(row.get("Name (EN)","")).strip()
+                if not name_v: continue
+                st_raw2 = str(row.get("Status","Not Started"))
+                data["activities"][i]["name"]         = name_v
+                data["activities"][i]["weight"]        = float(row.get("Weight %", 0) or 0)
+                data["activities"][i]["planned_cost"]  = float(row.get("Planned Cost", 0) or 0)
+                data["activities"][i]["start_month"]   = int(row.get("Start M", 1) or 1)
+                data["activities"][i]["end_month"]     = int(row.get("End M", 1) or 1)
+                data["activities"][i]["status"]        = SMAP.get(st_raw2, st_raw2)
+            save_data(data)
+            st.success("✅ Activities saved!"); st.rerun()
+
+    # ── TAB 1: Progress ───────────────────────────────────────────────────────
     with up_tab1:
-        # ── Quick Activity Editor ─────────────────────────────────────────────────
-        with st.expander("✏️ Edit Activities (Name / Weight / Dates / Cost)", expanded=True):
-            st.caption("Modify activity details here without going to Project Setup. Click 💾 Save Activities when done.")
-            sopts_up = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
-            up_rows = []
-            for a in acts:
-                sk2 = next((k for k in sopts_up if k in a.get("status","")), sopts_up[0])
-                up_rows.append({
-                    "No":           a.get("no",""),
-                    "Name (EN)":    a.get("name",""),
-                    "Weight %":     float(a.get("weight", 0)),
-                    "Planned Cost": float(a.get("planned_cost", 0)),
-                    "Start M":      int(a.get("start_month", 1)),
-                    "End M":        int(a.get("end_month", 1)),
-                    "Status":       sk2,
-                })
-            up_df = pd.DataFrame(up_rows) if up_rows else pd.DataFrame(
-                columns=["No","Name (EN)","Weight %","Planned Cost","Start M","End M","Status"])
-
-            up_edited = st.data_editor(
-                up_df, use_container_width=True, hide_index=True, num_rows="fixed",
-                column_config={
-                    "No":           st.column_config.TextColumn("No",        width="small",  disabled=True),
-                    "Name (EN)":    st.column_config.TextColumn("Name (EN)", width="large"),
-                    "Weight %":     st.column_config.NumberColumn("Weight %", min_value=0.0, max_value=100.0, step=0.5, format="%.2f", width="small"),
-                    "Planned Cost": st.column_config.NumberColumn("Budget (฿)", min_value=0.0, step=10000.0, format="฿%.0f", width="medium"),
-                    "Start M":      st.column_config.NumberColumn("Start M", min_value=1, max_value=36, step=1, width="small"),
-                    "End M":        st.column_config.NumberColumn("End M",   min_value=1, max_value=36, step=1, width="small"),
-                    "Status":       st.column_config.SelectboxColumn("Status", width="medium", options=sopts_up),
-                },
-                key="up_act_editor"
-            )
-
-            wt_sum_up = up_edited["Weight %"].sum() if len(up_edited) > 0 else 0
-            ua_info, ua_norm, ua_fill, ua_save = st.columns([3, 1, 1, 1])
-            ua_info.markdown(
-                f"**{len(up_edited)} activities** · Weight total: **{wt_sum_up:.1f}%** "
-                f"{'✅' if abs(wt_sum_up - 100) < 1 else '⚠️ should sum to 100%'}")
-            if ua_norm.button("⚖️ Normalize", use_container_width=True, key="ua_norm"):
-                if wt_sum_up > 0:
-                    up_edited["Weight %"] = (up_edited["Weight %"] / wt_sum_up * 100).round(2)
-                    st.info("Normalized. Click 💾 Save Activities to apply.")
-            budget_up_fill = data.get("total_budget", 0)
-            if ua_fill.button("📐 Fill Cost", use_container_width=True, key="ua_fill",
-                              help="Auto-set Budget: Weight% × Total Budget"):
-                for a in data["activities"]:
-                    a["planned_cost"] = round(a.get("weight", 0) / 100 * budget_up_fill, 2)
-                save_data(data); st.success("✅ Planned costs filled from weights."); st.rerun()
-            if ua_save.button("💾 Save Activities", use_container_width=True, type="primary", key="ua_save"):
-                for i, row in up_edited.iterrows():
-                    name_v = str(row.get("Name (EN)","")).strip()
-                    if not name_v: continue
-                    st_raw2 = str(row.get("Status","Not Started"))
-                    data["activities"][i]["name"]         = name_v
-                    data["activities"][i]["weight"]        = float(row.get("Weight %", 0) or 0)
-                    data["activities"][i]["planned_cost"]  = float(row.get("Planned Cost", 0) or 0)
-                    data["activities"][i]["start_month"]   = int(row.get("Start M", 1) or 1)
-                    data["activities"][i]["end_month"]     = int(row.get("End M", 1) or 1)
-                    data["activities"][i]["status"]        = SMAP.get(st_raw2, st_raw2)
-                save_data(data)
-                st.success("✅ Activities saved!"); st.rerun()
-
         st.markdown(f"Double-click any cell to edit. Current month: **M{cm} — {labels[cm-1] if cm<=N else 'N/A'}** (highlighted).")
 
         # Build single wide table: rows = activities, cols = Status + all months
