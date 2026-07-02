@@ -1519,7 +1519,12 @@ elif page=="📝 Update Progress":
 
     # ── TAB 1: Progress ───────────────────────────────────────────────────────
     with up_tab1:
-        st.markdown(f"Double-click any cell to edit. Current month: **M{cm} — {labels[cm-1] if cm<=N else 'N/A'}** (highlighted).")
+        # Top bar: title left, save button right
+        p_title, p_save_col = st.columns([5, 1])
+        p_title.markdown("### 📊 Progress")
+        p_title.caption(f"Current month: **M{cm} — {labels[cm-1] if cm<=N else 'N/A'}** (★). Double-click any cell to edit.")
+        prog_save_clicked = p_save_col.button("💾 Save", use_container_width=True,
+                                              type="primary", key="prog_save")
 
         # Build single wide table: rows = activities, cols = Status + all months
         prows = []
@@ -1533,37 +1538,27 @@ elif page=="📝 Update Progress":
             prows.append(row)
 
         pdf = pd.DataFrame(prows)
-
-        # Month column configs — highlight current month
         m_cfg = {}
         for m in range(1, N+1):
             col_lbl = f"M{m} ★" if m == cm else f"M{m}"
             m_cfg[f"M{m}"] = st.column_config.NumberColumn(
-                col_lbl, min_value=0.0, max_value=100.0,
-                step=5.0, format="%.0f", width="small")
+                col_lbl, min_value=0.0, max_value=100.0, step=5.0, format="%.0f", width="small")
 
         col_cfg = {
-            "No":       st.column_config.TextColumn("No",         width="small",  disabled=True),
-            "Activity": st.column_config.TextColumn("Activity",   width="large",  disabled=True),
-            "Wt%":      st.column_config.NumberColumn("Wt%",      width="small",  disabled=True, format="%.1f"),
-            "Cost(฿)":  st.column_config.NumberColumn("Cost(฿)",  width="medium", disabled=True, format="฿%.0f"),
+            "No":       st.column_config.TextColumn("No",        width="small",  disabled=True),
+            "Activity": st.column_config.TextColumn("Activity",  width="large",  disabled=True),
+            "Wt%":      st.column_config.NumberColumn("Wt%",     width="small",  disabled=True, format="%.1f"),
+            "Cost(฿)":  st.column_config.NumberColumn("Cost(฿)", width="medium", disabled=True, format="฿%.0f"),
             "Status":   st.column_config.SelectboxColumn("Status", width="medium", options=sopts_raw),
             **m_cfg,
         }
 
-        edited = st.data_editor(
-            pdf,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="fixed",
-            column_config=col_cfg,
-            key="progress_editor"
-        )
+        edited = st.data_editor(pdf, use_container_width=True, hide_index=True,
+                                num_rows="fixed", column_config=col_cfg, key="progress_editor")
 
-        st.markdown("")
-        cl, cr = st.columns([4, 1])
-        cl.info("💡 Edit **Status** and any **M1–M12** cell. Blank cells (grey) = outside activity date range — leave as blank.")
-        if cr.button("💾 Save All", use_container_width=True, type="primary"):
+        st.caption("💡 Blank cells = outside activity date range — leave blank.")
+
+        if prog_save_clicked:
             for i, row in edited.iterrows():
                 st_raw = str(row["Status"])
                 data["activities"][i]["status"] = SMAP.get(st_raw, st_raw)
@@ -1577,11 +1572,14 @@ elif page=="📝 Update Progress":
 
     with up_tab2:
         # ── Actual Cost Input ──────────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown("### 💰 Actual Cost per Month (฿)")
         budget_up = data.get("total_budget", 0)
 
-        st.caption("Enter actual expenditure (฿) per month per activity. Leave 0 if not yet spent.")
+        # Top bar: title left, save button right
+        c_title, c_save_col = st.columns([5, 1])
+        c_title.markdown("### 💰 Actual Cost per Month (฿)")
+        c_title.caption("★ = current month. Blank cells (outside activity schedule) are locked and won't be saved.")
+        cost_save_clicked = c_save_col.button("💾 Save", use_container_width=True,
+                                              type="primary", key="cost_save")
 
         crows = []
         for a in acts:
@@ -1626,9 +1624,8 @@ elif page=="📝 Update Progress":
         cost_edited = st.data_editor(cdf, use_container_width=True, hide_index=True,
                                       num_rows="fixed", column_config=cost_cfg,
                                       disabled=all_disabled_cols, key="cost_editor")
-        cl2, cr2 = st.columns([4,1])
-        cl2.caption("★ = current month. Blank cells (outside activity schedule) are locked and won't be saved.")
-        if cr2.button("💾 Save Costs", use_container_width=True, type="primary"):
+
+        if cost_save_clicked:
             for i, row in cost_edited.iterrows():
                 # Save edited planned_cost (Budget column)
                 budget_val = row.get("Budget")
