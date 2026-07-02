@@ -1979,140 +1979,38 @@ elif page=="⚙️ Project Setup":
     MANIFEST_PATH = "projects/project_manifest.json"
     PROJECTS_DIR  = "projects"
 
-    tab1, tab4 = st.tabs([
-        "📋 Project Info", "✏️ Activities"
-    ])
 
-    # ── TAB 1: Project Info ───────────────────────────────────────────────────
-    with tab1:
-        st.markdown("### 📋 Project Information")
-        with st.form("pf"):
-            c1,c2=st.columns(2)
-            pn=c1.text_input("Project Name (EN)",data["project_name"])
-            pt=c2.text_input("Project Name (TH)",data.get("project_name_th",""))
-            c3,c4=st.columns(2)
-            po=c3.text_input("Project Owner",data.get("project_owner",""))
-            pc=c4.text_input("Contractor",data.get("contractor",""))
-            c5,c6,c7=st.columns(3)
-            ps=c5.text_input("Start Date",data["start_date"])
-            pe=c6.text_input("End Date",data["end_date"])
-            nm=c7.number_input("Months",1,36,data["n_months"])
-            bg=st.number_input("Budget (THB)",value=float(data["total_budget"]),step=100000.0)
-            cn=st.text_input("Contract No.",data.get("contract_no",""))
-            if st.form_submit_button("💾 Save Project Info"):
-                data.update({"project_name":pn,"project_name_th":pt,"project_owner":po,
-                    "contractor":pc,"start_date":ps,"end_date":pe,"n_months":int(nm),
-                    "total_budget":bg,"contract_no":cn})
-                save_data(data); st.success("✅ Saved!"); st.rerun()
+    with st.form("pf"):
+        c1,c2=st.columns(2)
+        pn=c1.text_input("Project Name (EN)",data["project_name"])
+        pt=c2.text_input("Project Name (TH)",data.get("project_name_th",""))
+        c3,c4=st.columns(2)
+        po=c3.text_input("Project Owner",data.get("project_owner",""))
+        pc=c4.text_input("Contractor",data.get("contractor",""))
+        c5,c6,c7=st.columns(3)
+        ps=c5.text_input("Start Date",data["start_date"])
+        pe=c6.text_input("End Date",data["end_date"])
+        nm=c7.number_input("Months",1,36,data["n_months"])
+        bg=st.number_input("Budget (THB)",value=float(data["total_budget"]),step=100000.0)
+        cn=st.text_input("Contract No.",data.get("contract_no",""))
+        if st.form_submit_button("💾 Save Project Info"):
+            data.update({"project_name":pn,"project_name_th":pt,"project_owner":po,
+                "contractor":pc,"start_date":ps,"end_date":pe,"n_months":int(nm),
+                "total_budget":bg,"contract_no":cn})
+            save_data(data); st.success("✅ Saved!"); st.rerun()
 
-        if acts:
-            st.markdown("---")
-            total_cost = sum(a.get("planned_cost",0) for a in acts)
-            st.caption(f"**{len(acts)} activities** | WBS cost: **฿{total_cost:,.0f}** | Budget: **฿{data.get('total_budget',0):,.0f}**")
-            df=pd.DataFrame([{"No":a["no"],"Name":a["name"],"Wt%":a["weight"],
-                "Planned Cost (฿)":a.get("planned_cost",0),
-                "Start M":a["start_month"],"End M":a["end_month"],"Status":a.get("status","—")} for a in acts])
-            st.dataframe(df,use_container_width=True,hide_index=True,
-                         column_config={"Planned Cost (฿)": st.column_config.NumberColumn(format="฿%.0f")})
-
-    with tab4:
-        st.markdown("### ✏️ Manage Current Project Activities")
-        st.markdown(f"**{data['project_name']}** — {len(acts)} activities loaded")
-        st.markdown("Use the table below to **add new rows** (click ＋ at the bottom) or **delete rows** (select row → Delete key, or use the row checkbox). Click **💾 Save Changes** when done.")
+    if acts:
         st.markdown("---")
-
-        sopts_manage = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
-
-        # Build editable dataframe from current activities
-        mrows = []
-        for a in acts:
-            sk = next((k for k in sopts_manage if k in a.get("status","")), sopts_manage[0])
-            mrows.append({
-                "Del":            False,
-                "No":             str(a.get("no","") or ""),
-                "Name (EN)":      str(a.get("name","") or ""),
-                "Name (TH)":      str(a.get("name_th","") or ""),
-                "Weight %":       float(a.get("weight",0)),
-                "Planned Cost":   float(a.get("planned_cost",0)),
-                "Start M":        int(a.get("start_month",1)),
-                "End M":          int(a.get("end_month",1)),
-                "Status":         sk,
-            })
-
-        mdf = pd.DataFrame(mrows) if mrows else pd.DataFrame(
-            columns=["Del","No","Name (EN)","Name (TH)","Weight %","Planned Cost","Start M","End M","Status"])
-
-        st.info("☑️ Check **Del** on any row then click **💾 Save Changes** to delete it. Click ＋ at the bottom to add new rows.", icon="ℹ️")
-
-        managed = st.data_editor(
-            mdf,
-            use_container_width=True,
-            hide_index=True,
-            num_rows="dynamic",
-            column_config={
-                "Del":          st.column_config.CheckboxColumn("🗑️ Del", width="small", help="Check to delete this row on save"),
-                "No":           st.column_config.TextColumn("No", width="small", disabled=True),
-                "Name (EN)":    st.column_config.TextColumn("Name (EN)", width="large"),
-                "Name (TH)":    st.column_config.TextColumn("Name (TH)", width="medium"),
-                "Weight %":     st.column_config.NumberColumn("Weight %", min_value=0.0, max_value=100.0, step=0.5, format="%.2f", width="small"),
-                "Planned Cost": st.column_config.NumberColumn("Cost (฿)", min_value=0.0, step=10000.0, format="฿%.0f", width="medium"),
-                "Start M":      st.column_config.NumberColumn("Start M", min_value=1, max_value=36, step=1, width="small"),
-                "End M":        st.column_config.NumberColumn("End M",   min_value=1, max_value=36, step=1, width="small"),
-                "Status":       st.column_config.SelectboxColumn("Status", width="medium", options=sopts_manage),
-            },
-            key="manage_editor"
-        )
-
-        wt_sum = managed["Weight %"].sum() if len(managed) > 0 else 0
-        cost_sum = managed["Planned Cost"].sum() if len(managed) > 0 else 0
-        c_info, c_save, c_norm, c_fill = st.columns([3,1,1,1])
-        c_info.markdown(
-            f"**{len(managed)} activities** | Weight: **{wt_sum:.1f}%** {'✅' if abs(wt_sum-100)<1 else '⚠️ should be 100%'}"
-            f" | Total cost: **฿{cost_sum:,.0f}**")
-
-        if c_norm.button("⚖️ Normalize Weights", use_container_width=True):
-            if wt_sum > 0:
-                managed["Weight %"] = (managed["Weight %"] / wt_sum * 100).round(2)
-                st.info("Weights normalized to 100%. Click 💾 Save Changes to apply.")
-
-        budget_ps = data.get("total_budget", 0)
-        if c_fill.button("📐 Fill Cost from Weight", use_container_width=True,
-                         help="Auto-set Planned Cost = Weight% × Total Budget"):
-            for a in data["activities"]:
-                a["planned_cost"] = round(a.get("weight", 0) / 100 * budget_ps, 2)
-            save_data(data); st.success("✅ Planned costs filled from weights."); st.rerun()
-
-        # Show delete preview
-        del_count = int(managed["Del"].sum()) if "Del" in managed.columns else 0
-        if del_count > 0:
-            st.warning(f"⚠️ {del_count} row(s) marked for deletion. Click **💾 Save Changes** to confirm.", icon="⚠️")
-
-        if c_save.button("💾 Save Changes", use_container_width=True, type="primary"):
-            new_acts = []
-            for _, row in managed.iterrows():
-                # Skip rows marked for deletion
-                if row.get("Del", False): continue
-                name = str(row.get("Name (EN)","")).strip()
-                if not name: continue
-                st_raw = str(row.get("Status","Not Started"))
-                orig = next((a for a in acts if a.get("no")==str(row.get("No",""))), {})
-                new_acts.append({
-                    "no":          str(row.get("No","")),
-                    "name":        name,
-                    "name_th":     str(row.get("Name (TH)","")).strip() or name,
-                    "weight":      float(row.get("Weight %", 0) or 0),
-                    "planned_cost":float(row.get("Planned Cost", 0) or 0),
-                    "start_month": int(row.get("Start M", 1) or 1),
-                    "end_month":   int(row.get("End M", 1) or 1),
-                    "status":      SMAP.get(st_raw, st_raw),
-                    "actuals":     orig.get("actuals", {}),
-                })
-            data["activities"] = new_acts
-            save_data(data)
-            st.success(f"✅ Saved {len(new_acts)} activities!"); st.rerun()
+        total_cost = sum(a.get("planned_cost",0) for a in acts)
+        st.caption(f"**{len(acts)} activities** | WBS cost: **฿{total_cost:,.0f}** | Budget: **฿{data.get('total_budget',0):,.0f}**")
+        df=pd.DataFrame([{"No":a["no"],"Name":a["name"],"Wt%":a["weight"],
+            "Planned Cost (฿)":a.get("planned_cost",0),
+            "Start M":a["start_month"],"End M":a["end_month"],"Status":a.get("status","—")} for a in acts])
+        st.dataframe(df,use_container_width=True,hide_index=True,
+                     column_config={"Planned Cost (฿)": st.column_config.NumberColumn(format="฿%.0f")})
 
 
-# ── PROCESS GUIDE ─────────────────────────────────────────────────────────────
+
 elif page=="📋 Process Guide":
     st.markdown("# 📋 Process Guide")
     st.markdown("Complete pipeline — from project proposal document to live S-Curve dashboard.")
