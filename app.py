@@ -1421,8 +1421,8 @@ elif page=="⚙️ Project Setup":
     MANIFEST_PATH = "projects/project_manifest.json"
     PROJECTS_DIR  = "projects"
 
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📋 Project Info", "📚 WBS Library", "📄 Import CSV/WBS", "✏️ Activities"
+    tab1, tab2, tab4 = st.tabs([
+        "📋 Project Info", "📚 WBS Library & Import", "✏️ Activities"
     ])
 
     # ── TAB 1: Project Info ───────────────────────────────────────────────────
@@ -1784,7 +1784,8 @@ elif page=="⚙️ Project Setup":
                 conn.commit(); conn.close()
                 st.rerun()
 
-    with tab3:
+    with tab2:
+        st.markdown("---")
         st.markdown("### 📄 Import CSV / WBS")
         st.markdown("Upload `heymorning_task_import.csv` to parse, select a phase, and import into the active project.")
 
