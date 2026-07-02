@@ -576,6 +576,7 @@ with st.sidebar:
         "⚙️ Project Setup",
         "📝 Update Progress",
         "📈 S-Curve",
+        "💰 Cost Tracking",
         "📅 Gantt",
         "📊 EVM Indicators",
     ], label_visibility="collapsed")
@@ -1098,6 +1099,182 @@ elif page=="📈 S-Curve":
                     "Budget Remaining (฿)": f"฿{burn_int[i]:,.0f}",
                 })
             st.dataframe(pd.DataFrame(detail_rows), use_container_width=True, hide_index=True)
+
+# ── COST TRACKING ─────────────────────────────────────────────────────────────
+elif page=="💰 Cost Tracking":
+    st.markdown("# 💰 Cost Tracking")
+    st.markdown("---")
+    if not acts:
+        st.info("Add activities first in ⚙️ Project Setup."); st.stop()
+
+    budget_ct   = data.get("total_budget", 0)
+    wbs_cost_ct = sum(a.get("planned_cost",0) or round(a.get("weight",0)/100*budget_ct,2) for a in acts)
+    variance_ct = budget_ct - wbs_cost_ct
+    pct_used_ct = round(wbs_cost_ct/budget_ct*100,1) if budget_ct>0 else 0
+
+    # Actual cost to date from actual_costs entries
+    total_actual_ct = next((v for v in reversed(cum_ac) if v is not None), 0) or 0
+    pv_ct  = cum_pc[cm-1] if cm<=N else cum_pc[-1]
+    cv_ct  = total_actual_ct - pv_ct
+    remaining_ct = budget_ct - total_actual_ct
+
+    # EVM cost metrics
+    ev_pct_ct = (next((cuma[i] for i in range(cm-1,-1,-1) if cuma[i] is not None), 0) or 0)
+    ev_cost_ct = budget_ct * ev_pct_ct / 100
+    cpi_ct = round(ev_cost_ct / total_actual_ct, 2) if total_actual_ct > 0 else None
+
+    # ── KPI row ───────────────────────────────────────────────────────────────
+    k1,k2,k3,k4,k5,k6 = st.columns(6)
+    def _ctk(col, val, lbl, ac="#0A0A0A"):
+        col.markdown(f'<div class="kpi-card"><div class="kpi-num" style="color:{ac};font-size:1.45rem">'
+                     f'{val}</div><div class="kpi-label">{lbl}</div></div>', unsafe_allow_html=True)
+    _ctk(k1, f"฿{budget_ct:,.0f}",        "Contract Budget")
+    _ctk(k2, f"฿{wbs_cost_ct:,.0f}",      "WBS Planned Cost",
+         "#1AE06B" if wbs_cost_ct<=budget_ct else "#CC2222")
+    _ctk(k3, f"฿{pv_ct:,.0f}",            f"Planned Cost M{cm}")
+    _ctk(k4, f"฿{total_actual_ct:,.0f}",  f"Actual Cost M{cm}",
+         "#1AE06B" if total_actual_ct<=pv_ct else "#CC2222")
+    _ctk(k5, f"฿{remaining_ct:,.0f}",     "Budget Remaining",
+         "#1AE06B" if remaining_ct>=0 else "#CC2222")
+    _ctk(k6, f"{cpi_ct:.2f}" if cpi_ct else "—", "CPI (EV/AC)",
+         "#1AE06B" if cpi_ct and cpi_ct>=1 else "#A06000" if cpi_ct and cpi_ct>=0.8 else "#CC2222")
+
+    st.markdown("")
+
+    # ── Budget utilisation bar ────────────────────────────────────────────────
+    bar_col_ct = "#1AE06B" if pct_used_ct<=100 else "#CC2222"
+    st.markdown(
+        f'<div style="background:#FFFFFF;border-radius:16px;padding:16px 20px;'
+        f'box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:16px">'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:8px">'
+        f'<span style="font-weight:700;color:#0A0A0A">WBS Cost vs Contract Budget</span>'
+        f'<span style="font-weight:800;font-size:1.1rem;color:{bar_col_ct}">{pct_used_ct}%</span></div>'
+        f'<div style="background:#EFEFEF;border-radius:8px;height:10px">'
+        f'<div style="background:{bar_col_ct};height:10px;border-radius:8px;width:{min(pct_used_ct,100):.1f}%"></div></div>'
+        f'<div style="display:flex;justify-content:space-between;margin-top:6px">'
+        f'<span style="font-size:.75rem;color:#6B6B6B">฿0</span>'
+        f'<span style="font-size:.75rem;color:#6B6B6B">฿{budget_ct:,.0f}</span></div>'
+        f'</div>', unsafe_allow_html=True)
+
+    # ── Cost S-curve + monthly bar ────────────────────────────────────────────
+    ct_tab1, ct_tab2, ct_tab3 = st.tabs(["📈 Cost S-Curve", "📊 Monthly Breakdown", "📋 Activity Detail"])
+
+    with ct_tab1:
+        fig_cs = go.Figure()
+        fig_cs.add_trace(go.Scatter(
+            x=labels, y=cum_pc, name="Planned Cumulative (฿)",
+            fill="tozeroy", fillcolor="rgba(10,10,10,.07)",
+            line=dict(color="#0A0A0A", width=2.5), mode="lines+markers", marker=dict(size=7),
+            hovertemplate="<b>%{x}</b><br>Plan: ฿%{y:,.0f}<extra></extra>"))
+        ax_ac=[labels[i] for i,v in enumerate(cum_ac) if v is not None]
+        ay_ac=[v for v in cum_ac if v is not None]
+        if ay_ac:
+            fig_cs.add_trace(go.Scatter(
+                x=ax_ac, y=ay_ac, name="Actual Cumulative (฿)",
+                fill="tozeroy", fillcolor="rgba(26,224,107,.15)",
+                line=dict(color="#1AE06B", width=2.5), mode="lines+markers",
+                marker=dict(size=9, symbol="diamond"),
+                hovertemplate="<b>%{x}</b><br>Actual: ฿%{y:,.0f}<extra></extra>"))
+        # Burn-down
+        burn_ct = [budget_ct - v for v in cum_pc]
+        fig_cs.add_trace(go.Scatter(
+            x=labels, y=burn_ct, name="Budget Remaining (฿)",
+            line=dict(color="#CC2222", width=1.8, dash="dash"),
+            mode="lines", yaxis="y2", visible="legendonly",
+            hovertemplate="<b>%{x}</b><br>Remaining: ฿%{y:,.0f}<extra></extra>"))
+        if cm<=N:
+            fig_cs.add_vline(x=labels[cm-1], line_dash="dash", line_color="#1AE06B", line_width=2)
+            fig_cs.add_annotation(x=labels[cm-1], y=1, yref="paper", text="TODAY",
+                showarrow=False, font=dict(color="#0A0A0A", size=11), xanchor="left")
+        fig_cs.update_layout(
+            paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A", size=12), height=400,
+            margin=dict(l=20,r=20,t=20,b=20), hovermode="x unified",
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#E0E0E0", borderwidth=1),
+            xaxis=dict(gridcolor="#F0F0F0", showline=False, tickangle=-30),
+            yaxis=dict(title="Cumulative Cost (฿)", gridcolor="#F0F0F0", tickprefix="฿", tickformat=",.0f"),
+            yaxis2=dict(title="Remaining (฿)", overlaying="y", side="right",
+                        tickprefix="฿", tickformat=",.0f", showgrid=False))
+        st.plotly_chart(fig_cs, use_container_width=True)
+
+    with ct_tab2:
+        fig_mb = go.Figure()
+        fig_mb.add_trace(go.Bar(
+            x=labels, y=monthly_pc, name="Planned Spend (฿)",
+            marker_color="#0A0A0A", opacity=0.8,
+            hovertemplate="<b>%{x}</b><br>Plan: ฿%{y:,.0f}<extra></extra>"))
+        # actual monthly
+        ma_bar = [monthly_ac[i] if monthly_ac[i] is not None else 0 for i in range(N)]
+        if any(v and v>0 for v in ma_bar):
+            fig_mb.add_trace(go.Bar(
+                x=labels, y=ma_bar, name="Actual Spend (฿)",
+                marker_color="#1AE06B", opacity=0.85,
+                hovertemplate="<b>%{x}</b><br>Actual: ฿%{y:,.0f}<extra></extra>"))
+        if cm<=N:
+            fig_mb.add_vline(x=labels[cm-1], line_dash="dash", line_color="#1AE06B", line_width=1.5)
+        fig_mb.update_layout(
+            barmode="group", paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A", size=12), height=380,
+            margin=dict(l=20,r=20,t=20,b=20), hovermode="x unified",
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#E0E0E0", borderwidth=1),
+            xaxis=dict(gridcolor="#F0F0F0", showline=False, tickangle=-30),
+            yaxis=dict(title="Monthly Spend (฿)", gridcolor="#F0F0F0", tickprefix="฿", tickformat=",.0f"))
+        st.plotly_chart(fig_mb, use_container_width=True)
+
+        # Monthly table
+        mt_rows = []
+        for i, lbl in enumerate(labels):
+            ac_v = monthly_ac[i] or 0
+            cv_m = ac_v - monthly_pc[i]
+            mt_rows.append({"Month": lbl,
+                "Plan (฿)": f"฿{monthly_pc[i]:,.0f}",
+                "Actual (฿)": f"฿{ac_v:,.0f}" if ac_v else "—",
+                "Variance (฿)": f"฿{cv_m:+,.0f}" if ac_v else "—",
+                "Cum Plan (฿)": f"฿{cum_pc[i]:,.0f}",
+                "Cum Actual (฿)": f"฿{cum_ac[i]:,.0f}" if cum_ac[i] else "—"})
+        st.dataframe(pd.DataFrame(mt_rows), use_container_width=True, hide_index=True)
+
+    with ct_tab3:
+        act_rows_ct = []
+        for a in acts:
+            pc_a = a.get("planned_cost",0) or round(a.get("weight",0)/100*budget_ct,2)
+            ac_a = sum(float(v) for v in a.get("actual_costs",{}).values())
+            share = round(pc_a/wbs_cost_ct*100,1) if wbs_cost_ct>0 else 0
+            rem_a = pc_a - ac_a
+            cpi_a = round(pc_a/ac_a,2) if ac_a>0 else None
+            act_rows_ct.append({
+                "No": a["no"], "Activity": a["name"][:45],
+                "Wt%": a["weight"],
+                "Budget (฿)": f"฿{pc_a:,.0f}",
+                "Actual (฿)": f"฿{ac_a:,.0f}",
+                "Remaining (฿)": f"฿{rem_a:,.0f}",
+                "Share%": f"{share}%",
+                "CPI": f"{cpi_a:.2f}" if cpi_a else "—",
+                "Status": a.get("status","Not Started")
+            })
+        st.dataframe(pd.DataFrame(act_rows_ct), use_container_width=True, hide_index=True)
+
+        # Horizontal bar — budget vs actual per activity
+        act_names_ct = [f"{a['no']}. {a['name'][:30]}" for a in acts]
+        budgets_ct   = [a.get("planned_cost",0) or round(a.get("weight",0)/100*budget_ct,2) for a in acts]
+        actuals_ct   = [sum(float(v) for v in a.get("actual_costs",{}).values()) for a in acts]
+        fig_act = go.Figure()
+        fig_act.add_trace(go.Bar(y=act_names_ct, x=budgets_ct, name="Budget",
+            orientation="h", marker_color="#0A0A0A", opacity=0.7,
+            hovertemplate="<b>%{y}</b><br>Budget: ฿%{x:,.0f}<extra></extra>"))
+        if any(v>0 for v in actuals_ct):
+            fig_act.add_trace(go.Bar(y=act_names_ct, x=actuals_ct, name="Actual",
+                orientation="h", marker_color="#1AE06B",
+                hovertemplate="<b>%{y}</b><br>Actual: ฿%{x:,.0f}<extra></extra>"))
+        fig_act.update_layout(
+            barmode="overlay", paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+            font=dict(color="#0A0A0A", size=11),
+            height=max(300, len(acts)*38),
+            margin=dict(l=10,r=80,t=10,b=10),
+            xaxis=dict(gridcolor="#F0F0F0", showline=False, tickprefix="฿", tickformat=",.0f"),
+            yaxis=dict(autorange="reversed"),
+            legend=dict(bgcolor="#FFFFFF", bordercolor="#E0E0E0", borderwidth=1))
+        st.plotly_chart(fig_act, use_container_width=True)
 
 # ── GANTT ─────────────────────────────────────────────────────────────────────
 elif page=="📅 Gantt":
