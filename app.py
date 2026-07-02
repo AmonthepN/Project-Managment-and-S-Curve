@@ -1531,9 +1531,12 @@ elif page=="📝 Update Progress":
             if budget_val is not None and not pd.isna(budget_val):
                 data["activities"][i]["planned_cost"] = float(budget_val)
             # Save actual costs per month
+            a_start = data["activities"][i].get("start_month", 1)
+            a_end   = data["activities"][i].get("end_month", N)
             for m in range(1, N+1):
                 val = row.get(f"C{m}")
-                if val is not None and not pd.isna(val):
+                # Only save values within the activity's scheduled range
+                if val is not None and not pd.isna(val) and a_start <= m <= a_end:
                     data["activities"][i].setdefault("actual_costs",{})[str(m)] = float(val)
         save_data(data); st.success("✅ Costs saved!"); st.rerun()
 
@@ -1934,9 +1937,9 @@ elif page=="⚙️ Project Setup":
             sk = next((k for k in sopts_manage if k in a.get("status","")), sopts_manage[0])
             mrows.append({
                 "Del":            False,
-                "No":             a.get("no",""),
-                "Name (EN)":      a.get("name",""),
-                "Name (TH)":      a.get("name_th",""),
+                "No":             str(a.get("no","") or ""),
+                "Name (EN)":      str(a.get("name","") or ""),
+                "Name (TH)":      str(a.get("name_th","") or ""),
                 "Weight %":       float(a.get("weight",0)),
                 "Planned Cost":   float(a.get("planned_cost",0)),
                 "Start M":        int(a.get("start_month",1)),
@@ -1956,7 +1959,7 @@ elif page=="⚙️ Project Setup":
             num_rows="dynamic",
             column_config={
                 "Del":          st.column_config.CheckboxColumn("🗑️ Del", width="small", help="Check to delete this row on save"),
-                "No":           st.column_config.TextColumn("No", width="small"),
+                "No":           st.column_config.TextColumn("No", width="small", disabled=True),
                 "Name (EN)":    st.column_config.TextColumn("Name (EN)", width="large"),
                 "Name (TH)":    st.column_config.TextColumn("Name (TH)", width="medium"),
                 "Weight %":     st.column_config.NumberColumn("Weight %", min_value=0.0, max_value=100.0, step=0.5, format="%.2f", width="small"),
