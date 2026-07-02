@@ -156,7 +156,8 @@ code{background:#F2F2F2;color:#0A0A0A;border-radius:4px;padding:1px 5px}
 </style>""", unsafe_allow_html=True)
 
 # ── Project Database (SQLite) ─────────────────────────────────────────────────
-DB_FILE = "projects.db"
+_APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(_APP_DIR, "projects.db")
 
 def db_connect():
     conn = sqlite3.connect(DB_FILE)
@@ -300,7 +301,7 @@ def db_get_log(limit=50, db_key=None):
 db_init()   # run once on startup
 
 # ── Data ─────────────────────────────────────────────────────────────────────
-DATA_FILE = "project_data.json"
+DATA_FILE = os.path.join(_APP_DIR, "project_data.json")
 
 def load_data():
     if os.path.exists(DATA_FILE):
