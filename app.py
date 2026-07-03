@@ -389,7 +389,7 @@ def compute_cost(data):
     return cp,ca,mp,ma
 
 def build_excel(data, cump, cuma, labels):
-    """Build a formatted .xlsx workbook and return bytes."""
+    """Build a comprehensive .xlsx workbook with 6 linked sheets and Excel formulas."""
     import openpyxl
     from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
@@ -397,126 +397,52 @@ def build_excel(data, cump, cuma, labels):
     import io as _io
 
     wb = openpyxl.Workbook()
-    acts = data.get("activities", [])
-    N    = data.get("n_months", 12)
+    acts  = data.get("activities", [])
+    N     = data.get("n_months", 12)
+    budget = float(data.get("total_budget", 0))
+    cm_idx = cur_month(data["start_date"], N)
 
     # ── Colour palette ────────────────────────────────────────────────────────
-    HDR_BG  = PatternFill("solid", fgColor="2D3747")
-    HDR_FG  = Font(color="E8ECF0", bold=True, size=10)
-    LOCK_BG = PatternFill("solid", fgColor="3D4557")
-    EDIT_BG = PatternFill("solid", fgColor="1A2030")
-    CUR_BG  = PatternFill("solid", fgColor="5A3A00")   # orange tint = current month
-    DONE_BG = PatternFill("solid", fgColor="2A5E3A")
-    PROG_BG = PatternFill("solid", fgColor="2A4E2A")
-    DEL_BG  = PatternFill("solid", fgColor="5A1A1A")
-    THIN    = Border(
-        left=Side(style="thin", color="555B6E"),
-        right=Side(style="thin", color="555B6E"),
-        top=Side(style="thin", color="555B6E"),
-        bottom=Side(style="thin", color="555B6E"))
-    WH  = Font(color="E8ECF0", size=9)
-    GRY = Font(color="9BA3AF", size=9)
+    C_HDR   = "1F2937"; C_HDR_F  = "F9FAFB"
+    C_LOCK  = "374151"; C_EDIT   = "111827"
+    C_CUR   = "78350F"; C_DONE   = "14532D"
+    C_PROG  = "1E3A5F"; C_DEL    = "7F1D1D"
+    C_GREEN = "065F46"; C_DASH   = "0F172A"
+    C_LABEL = "1E293B"; C_VAL    = "0F172A"
+    C_FORM  = "1E3A5F"   # formula cell background
 
-    def _ap(ws, r, c, v, fill=None, font=None, align=None, num_fmt=None):
+    def _fill(c): return PatternFill("solid", fgColor=c)
+    def _font(c, bold=False, sz=10): return Font(color=c, bold=bold, size=sz)
+    def _border():
+        s = Side(style="thin", color="4B5563")
+        return Border(left=s, right=s, top=s, bottom=s)
+    def _ap(ws, r, c, v, bg=C_EDIT, fg=C_HDR_F, bold=False, sz=9,
+            align="center", num_fmt=None):
         cell = ws.cell(row=r, column=c, value=v)
-        if fill:    cell.fill   = fill
-        if font:    cell.font   = font
-        if align:   cell.alignment = align
+        cell.fill   = _fill(bg)
+        cell.font   = _font(fg, bold, sz)
+        cell.border = _border()
+        cell.alignment = Alignment(horizontal=align, vertical="center", wrap_text=False)
         if num_fmt: cell.number_format = num_fmt
-        cell.border = THIN
         return cell
 
-    center = Alignment(horizontal="center", vertical="center", wrap_text=False)
-    left   = Alignment(horizontal="left",   vertical="center", wrap_text=False)
-
-    # ── Sheet 1 : Progress (editable) ────────────────────────────────────────
-    ws = wb.active
-    ws.title = "Progress"
-    ws.freeze_panes = "F2"          # freeze cols A-E, row 1
-    ws.sheet_view.showGridLines = False
-
-    # Header row
-    fixed_hdrs = ["No", "Activity", "Wt%", "Cost (฿)", "Status"]
-    month_hdrs = [labels[m] if m < len(labels) else f"M{m+1}" for m in range(N)]
-    all_hdrs   = fixed_hdrs + month_hdrs
-    cm_idx     = cur_month(data["start_date"], N)   # 1-based
-
-    for ci, h in enumerate(all_hdrs, 1):
-        is_cm = (ci == 5 + cm_idx)
-        bg = CUR_BG if is_cm else HDR_BG
-        _ap(ws, 1, ci, h, fill=bg, font=HDR_FG, align=center)
-
-    # Column widths
-    ws.column_dimensions["A"].width = 10
-    ws.column_dimensions["B"].width = 40
-    ws.column_dimensions["C"].width = 7
-    ws.column_dimensions["D"].width = 14
-    ws.column_dimensions["E"].width = 14
-    for ci in range(6, 6+N):
-        ws.column_dimensions[get_column_letter(ci)].width = 9
-
-    # Status dropdown validation
-    dv = DataValidation(
-        type="list",
-        formula1='"Not Started,In Progress,Pending,Completed,Delayed,Cancelled"',
-        showDropDown=False)
-    ws.add_data_validation(dv)
+    def _hdr(ws, r, c, txt, w=None):
+        cell = _ap(ws, r, c, txt, bg=C_HDR, fg=C_HDR_F, bold=True, sz=10)
+        if w: ws.column_dimensions[get_column_letter(c)].width = w
+        return cell
 
     sopts = ["Not Started","In Progress","Pending","Completed","Delayed","Cancelled"]
 
-    for ri, a in enumerate(acts, 2):
-        sk = next((k for k in sopts if k in a.get("status","")), sopts[0])
-        # Status row colour
-        if   "Completed"   in sk: row_bg = DONE_BG
-        elif "In Progress" in sk: row_bg = PROG_BG
-        elif "Delayed"     in sk: row_bg = DEL_BG
-        else:                     row_bg = EDIT_BG
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 1 — Project Info  (named cells for formula refs)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws_info = wb.active
+    ws_info.title = "Project Info"
+    ws_info.sheet_view.showGridLines = False
+    ws_info.column_dimensions["A"].width = 26
+    ws_info.column_dimensions["B"].width = 52
 
-        _ap(ws, ri, 1, a.get("no",""),  fill=LOCK_BG, font=GRY,  align=center)
-        _ap(ws, ri, 2, a.get("name",""),fill=LOCK_BG, font=WH,   align=left)
-        _ap(ws, ri, 3, a.get("weight",0),fill=LOCK_BG,font=GRY,  align=center, num_fmt="0.0")
-        _ap(ws, ri, 4, a.get("planned_cost",0), fill=LOCK_BG, font=GRY, align=center, num_fmt='#,##0')
-        _ap(ws, ri, 5, sk,               fill=row_bg, font=WH,   align=center)
-        dv.add(ws.cell(row=ri, column=5))
-
-        for mi in range(1, N+1):
-            ci = 5 + mi
-            in_range = a["start_month"] <= mi <= a["end_month"]
-            val = float(a.get("actuals",{}).get(str(mi), 0)) if in_range else None
-            is_cm_col = (mi == cm_idx)
-            bg = CUR_BG if is_cm_col else (EDIT_BG if in_range else LOCK_BG)
-            fn = WH if in_range else GRY
-            cell = _ap(ws, ri, ci, val, fill=bg, font=fn, align=center, num_fmt="0")
-            if not in_range:
-                cell.protection = openpyxl.styles.Protection(locked=True)
-
-        ws.row_dimensions[ri].height = 18
-
-    ws.row_dimensions[1].height = 22
-
-    # ── Sheet 2 : S-Curve Data (reference) ──────────────────────────────────
-    ws2 = wb.create_sheet("S-Curve Data")
-    ws2.freeze_panes = "B2"
-    ws2.sheet_view.showGridLines = False
-    for ci, h in enumerate(["Month","Plan (%)","Actual (%)","SV","SPI"], 1):
-        _ap(ws2, 1, ci, h, fill=HDR_BG, font=HDR_FG, align=center)
-    ws2.column_dimensions["A"].width = 14
-    for col in ["B","C","D","E"]: ws2.column_dimensions[col].width = 12
-    for i, lbl in enumerate(labels):
-        pv = cump[i]
-        ev = cuma[i]
-        sv_ = round(ev-pv,2) if ev is not None else None
-        spi_= round(ev/pv,2) if (ev is not None and pv>0) else None
-        row = [lbl, pv, ev, sv_, spi_]
-        for ci, v in enumerate(row, 1):
-            _ap(ws2, i+2, ci, v, fill=EDIT_BG, font=WH, align=center, num_fmt="0.00")
-
-    # ── Sheet 3 : Project Info ───────────────────────────────────────────────
-    ws3 = wb.create_sheet("Project Info")
-    ws3.sheet_view.showGridLines = False
-    ws3.column_dimensions["A"].width = 22
-    ws3.column_dimensions["B"].width = 50
-    fields = [
+    info_fields = [
         ("Project Name (EN)", data.get("project_name","")),
         ("Project Name (TH)", data.get("project_name_th","")),
         ("Contract No.",      data.get("contract_no","")),
@@ -524,13 +450,297 @@ def build_excel(data, cump, cuma, labels):
         ("Contractor",        data.get("contractor","")),
         ("Start Date",        data.get("start_date","")),
         ("End Date",          data.get("end_date","")),
-        ("Months",            data.get("n_months","")),
-        ("Total Budget (THB)",data.get("total_budget",0)),
+        ("Duration (months)", N),
+        ("Total Budget (THB)",budget),
+        ("WBS Planned Cost",  sum(a.get("planned_cost",0) or round(a.get("weight",0)/100*budget,2) for a in acts)),
         ("No. Activities",    len(acts)),
+        ("Export Date",       datetime.today().strftime("%Y-%m-%d")),
     ]
-    for ri, (k, v) in enumerate(fields, 1):
-        _ap(ws3, ri, 1, k, fill=HDR_BG, font=HDR_FG, align=left)
-        _ap(ws3, ri, 2, v, fill=EDIT_BG, font=WH,    align=left)
+    # Row 1: title banner
+    ws_info.merge_cells("A1:B1")
+    title_cell = ws_info.cell(row=1, column=1, value="📊 PROJECT INFORMATION")
+    title_cell.fill = _fill(C_DASH); title_cell.font = _font(C_HDR_F, True, 13)
+    title_cell.alignment = Alignment(horizontal="center", vertical="center")
+    ws_info.row_dimensions[1].height = 28
+
+    for ri, (k, v) in enumerate(info_fields, 2):
+        _ap(ws_info, ri, 1, k, bg=C_HDR, fg=C_HDR_F, bold=True, sz=10, align="left")
+        fmt = "#,##0" if isinstance(v, float) and v > 999 else None
+        _ap(ws_info, ri, 2, v, bg=C_LABEL, fg=C_HDR_F, sz=10, align="left", num_fmt=fmt)
+        ws_info.row_dimensions[ri].height = 20
+
+    # Named range helper (budget row = ri-1 from above loop when k=="Total Budget")
+    BUDGET_ROW = next(ri+2 for ri,(k,_) in enumerate(info_fields) if "Budget" in k and "WBS" not in k)
+    BUDGET_REF = f"'Project Info'!$B${BUDGET_ROW}"   # absolute cell ref for budget
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 2 — Progress  (actual % per activity per month)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws_prog = wb.create_sheet("Progress")
+    ws_prog.freeze_panes = "F2"
+    ws_prog.sheet_view.showGridLines = False
+
+    prog_hdrs = ["No","Activity","Wt%","Budget (฿)","Status"] + \
+                [f"M{m} ★" if m==cm_idx else f"M{m}" for m in range(1,N+1)]
+    for ci, h in enumerate(prog_hdrs, 1):
+        bg = C_CUR if ci == 5+cm_idx else C_HDR
+        _ap(ws_prog, 1, ci, h, bg=bg, fg=C_HDR_F, bold=True, sz=10)
+
+    ws_prog.column_dimensions["A"].width = 8
+    ws_prog.column_dimensions["B"].width = 38
+    ws_prog.column_dimensions["C"].width = 7
+    ws_prog.column_dimensions["D"].width = 14
+    ws_prog.column_dimensions["E"].width = 14
+    for ci in range(6, 6+N): ws_prog.column_dimensions[get_column_letter(ci)].width = 8
+
+    dv_prog = DataValidation(type="list",
+        formula1='"Not Started,In Progress,Pending,Completed,Delayed,Cancelled"',
+        showDropDown=False)
+    ws_prog.add_data_validation(dv_prog)
+
+    for ri, a in enumerate(acts, 2):
+        sk = next((k for k in sopts if k in a.get("status","")), sopts[0])
+        row_bg = C_DONE if "Completed" in sk else C_PROG if "In Progress" in sk \
+                 else C_DEL if "Delayed" in sk else C_EDIT
+        pc = a.get("planned_cost",0) or round(a.get("weight",0)/100*budget,2)
+        _ap(ws_prog, ri, 1, a.get("no",""),   bg=C_LOCK, fg="9CA3AF", sz=9)
+        _ap(ws_prog, ri, 2, a.get("name",""), bg=C_LOCK, fg=C_HDR_F, sz=9, align="left")
+        _ap(ws_prog, ri, 3, a.get("weight",0),bg=C_LOCK, fg="9CA3AF", sz=9, num_fmt="0.0")
+        _ap(ws_prog, ri, 4, pc,               bg=C_LOCK, fg="9CA3AF", sz=9, num_fmt="#,##0")
+        cell_st = _ap(ws_prog, ri, 5, sk,     bg=row_bg, fg=C_HDR_F, sz=9)
+        dv_prog.add(cell_st)
+        for mi in range(1, N+1):
+            in_rng = a["start_month"] <= mi <= a["end_month"]
+            val = float(a.get("actuals",{}).get(str(mi),0)) if in_rng else None
+            bg = C_CUR if mi==cm_idx else (C_EDIT if in_rng else C_LOCK)
+            _ap(ws_prog, ri, 5+mi, val, bg=bg, fg=C_HDR_F if in_rng else "9CA3AF",
+                sz=9, num_fmt="0.0")
+        ws_prog.row_dimensions[ri].height = 18
+
+    # Totals row
+    tr = len(acts)+2
+    _ap(ws_prog, tr, 1, "TOTAL", bg=C_HDR, fg=C_HDR_F, bold=True, sz=9)
+    _ap(ws_prog, tr, 2, "",      bg=C_HDR, fg=C_HDR_F)
+    _ap(ws_prog, tr, 3, f"=SUM(C2:C{tr-1})", bg=C_GREEN, fg=C_HDR_F, bold=True, sz=9, num_fmt="0.0")
+    _ap(ws_prog, tr, 4, f"=SUM(D2:D{tr-1})", bg=C_GREEN, fg=C_HDR_F, bold=True, sz=9, num_fmt="#,##0")
+    _ap(ws_prog, tr, 5, "",      bg=C_HDR, fg=C_HDR_F)
+    for mi in range(1, N+1):
+        col = get_column_letter(5+mi)
+        _ap(ws_prog, tr, 5+mi, f"=SUM({col}2:{col}{tr-1})",
+            bg=C_GREEN, fg=C_HDR_F, bold=True, sz=9, num_fmt="0.0")
+    ws_prog.row_dimensions[tr].height = 20
+    ws_prog.row_dimensions[1].height = 22
+    PROG_LAST = tr-1   # last data row index in Progress sheet
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 3 — Cost  (actual expenditure per month, Budget formula-linked)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws_cost = wb.create_sheet("Cost")
+    ws_cost.freeze_panes = "D2"
+    ws_cost.sheet_view.showGridLines = False
+
+    cost_hdrs = ["No","Activity","Budget (฿)"] + \
+                [f"C{m} ★" if m==cm_idx else f"C{m}" for m in range(1,N+1)]
+    for ci, h in enumerate(cost_hdrs, 1):
+        bg = C_CUR if ci == 3+cm_idx else C_HDR
+        _ap(ws_cost, 1, ci, h, bg=bg, fg=C_HDR_F, bold=True, sz=10)
+
+    ws_cost.column_dimensions["A"].width = 8
+    ws_cost.column_dimensions["B"].width = 38
+    ws_cost.column_dimensions["C"].width = 14
+    for ci in range(4, 4+N): ws_cost.column_dimensions[get_column_letter(ci)].width = 10
+
+    months_in_rng = set()
+    for a in acts:
+        for m in range(a.get("start_month",1), a.get("end_month",1)+1):
+            months_in_rng.add(m)
+
+    for ri, a in enumerate(acts, 2):
+        pc = a.get("planned_cost",0) or round(a.get("weight",0)/100*budget,2)
+        _ap(ws_cost, ri, 1, a.get("no",""),  bg=C_LOCK, fg="9CA3AF", sz=9)
+        _ap(ws_cost, ri, 2, a.get("name",""),bg=C_LOCK, fg=C_HDR_F, sz=9, align="left")
+        # Budget: formula = Weight% / 100 * TotalBudget, or actual planned_cost
+        _ap(ws_cost, ri, 3, pc,              bg=C_FORM, fg=C_HDR_F, bold=True, sz=9, num_fmt="#,##0")
+        for mi in range(1, N+1):
+            in_rng = a["start_month"] <= mi <= a["end_month"]
+            val = float(a.get("actual_costs",{}).get(str(mi),0)) if in_rng else None
+            bg = C_CUR if mi==cm_idx else (C_EDIT if in_rng else C_LOCK)
+            _ap(ws_cost, ri, 3+mi, val, bg=bg, fg=C_HDR_F if in_rng else "9CA3AF",
+                sz=9, num_fmt="#,##0")
+        ws_cost.row_dimensions[ri].height = 18
+
+    # Totals row
+    ctr = len(acts)+2
+    _ap(ws_cost, ctr, 1, "TOTAL", bg=C_HDR, fg=C_HDR_F, bold=True, sz=9)
+    _ap(ws_cost, ctr, 2, "",      bg=C_HDR, fg=C_HDR_F)
+    _ap(ws_cost, ctr, 3, f"=SUM(C2:C{ctr-1})", bg=C_GREEN, fg=C_HDR_F, bold=True, sz=9, num_fmt="#,##0")
+    for mi in range(1, N+1):
+        col = get_column_letter(3+mi)
+        _ap(ws_cost, ctr, 3+mi, f"=SUM({col}2:{col}{ctr-1})",
+            bg=C_GREEN, fg=C_HDR_F, bold=True, sz=9, num_fmt="#,##0")
+    ws_cost.row_dimensions[ctr].height = 20
+    ws_cost.row_dimensions[1].height = 22
+    COST_LAST = ctr-1
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 4 — S-Curve  (cumulative PV, EV, AC — all formula-linked)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws_sc = wb.create_sheet("S-Curve")
+    ws_sc.freeze_panes = "B2"
+    ws_sc.sheet_view.showGridLines = False
+
+    sc_hdrs = ["Month","PV (Plan%)","EV (Actual%)","SV (%)","SPI",
+               "PV Cost (฿)","AC (฿)","EV Cost (฿)","CV (฿)","CPI"]
+    sc_widths = [14,13,13,10,8,16,16,16,14,8]
+    for ci, (h, w) in enumerate(zip(sc_hdrs, sc_widths), 1):
+        _ap(ws_sc, 1, ci, h, bg=C_HDR, fg=C_HDR_F, bold=True, sz=10)
+        ws_sc.column_dimensions[get_column_letter(ci)].width = w
+    ws_sc.row_dimensions[1].height = 22
+
+    for i, lbl in enumerate(labels):
+        r = i+2
+        m = i+1
+        # Progress cols: cols 6+m in Progress sheet (col F = M1 → col 6)
+        prog_col = get_column_letter(5+m)   # F=M1, G=M2, ...
+        cost_col = get_column_letter(3+m)   # D=C1, E=C2, ...
+
+        # Monthly PV = SUM of planned weights for activities active this month (computed, not formula)
+        monthly_pv = sum(
+            a.get("weight",0)/max(1,a["end_month"]-a["start_month"]+1)
+            for a in acts if a["start_month"] <= m <= a["end_month"]
+        )
+        # Cumulative PV (static from compute)
+        pv_cum = cump[i]
+        # EV cumulative
+        ev_cum = cuma[i]
+        # Monthly AC
+        ac_monthly = sum(
+            float(a.get("actual_costs",{}).get(str(m),0))
+            for a in acts if a["start_month"] <= m <= a["end_month"]
+        )
+
+        # Cols: Month | PV% | EV% | SV | SPI | PV_cost | AC | EV_cost | CV | CPI
+        _ap(ws_sc, r, 1, lbl,    bg=C_LOCK, fg="9CA3AF", sz=9, align="left")
+        _ap(ws_sc, r, 2, pv_cum, bg=C_EDIT, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        _ap(ws_sc, r, 3, ev_cum, bg=C_EDIT, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        # SV = EV - PV  (formula)
+        _ap(ws_sc, r, 4, f"=IF(C{r}<>\"\",C{r}-B{r},\"\")",
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        # SPI = EV / PV  (formula)
+        _ap(ws_sc, r, 5, f'=IF(AND(C{r}<>"",B{r}>0),C{r}/B{r},"")',
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        # PV Cost = PV% / 100 * Budget  (formula)
+        _ap(ws_sc, r, 6, f"=B{r}/100*{BUDGET_REF}",
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        # AC = sum of Cost sheet column for this month
+        _ap(ws_sc, r, 7, f"=SUM(Cost!{cost_col}2:Cost!{cost_col}{COST_LAST})" if r==2 \
+                         else f"=G{r-1}+SUM(Cost!{cost_col}2:Cost!{cost_col}{COST_LAST})",
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        # EV Cost = EV% / 100 * Budget  (formula)
+        _ap(ws_sc, r, 8, f'=IF(C{r}<>"",C{r}/100*{BUDGET_REF},"")',
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        # CV = EV_cost - AC  (formula)
+        _ap(ws_sc, r, 9, f'=IF(H{r}<>"",H{r}-G{r},"")',
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        # CPI = EV_cost / AC  (formula)
+        _ap(ws_sc, r, 10, f'=IF(AND(H{r}<>"",G{r}>0),H{r}/G{r},"")',
+            bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        ws_sc.row_dimensions[r].height = 18
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 5 — EVM  (monthly EVM detail table, all formula-linked to S-Curve)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws_evm = wb.create_sheet("EVM")
+    ws_evm.freeze_panes = "B2"
+    ws_evm.sheet_view.showGridLines = False
+
+    evm_hdrs = ["Month","PV%","EV%","SV%","SPI","PV Cost","AC","EV Cost","CV","CPI","Status"]
+    evm_w    = [14,     8,    8,    8,    7,    15,       15,   15,       13,   7,   14]
+    for ci, (h,w) in enumerate(zip(evm_hdrs, evm_w), 1):
+        _ap(ws_evm, 1, ci, h, bg=C_HDR, fg=C_HDR_F, bold=True, sz=10)
+        ws_evm.column_dimensions[get_column_letter(ci)].width = w
+    ws_evm.row_dimensions[1].height = 22
+
+    for i in range(N):
+        r   = i+2
+        sr  = i+2   # same row index in S-Curve sheet
+        _ap(ws_evm, r,  1, f"='S-Curve'!A{sr}", bg=C_LOCK, fg="9CA3AF", sz=9, align="left")
+        _ap(ws_evm, r,  2, f"='S-Curve'!B{sr}", bg=C_EDIT, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        _ap(ws_evm, r,  3, f"='S-Curve'!C{sr}", bg=C_EDIT, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        _ap(ws_evm, r,  4, f"='S-Curve'!D{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        _ap(ws_evm, r,  5, f"='S-Curve'!E{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        _ap(ws_evm, r,  6, f"='S-Curve'!F{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        _ap(ws_evm, r,  7, f"='S-Curve'!G{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        _ap(ws_evm, r,  8, f"='S-Curve'!H{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        _ap(ws_evm, r,  9, f"='S-Curve'!I{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="#,##0")
+        _ap(ws_evm, r, 10, f"='S-Curve'!J{sr}", bg=C_FORM, fg=C_HDR_F, sz=9, num_fmt="0.00")
+        # Status: formula-driven text
+        _ap(ws_evm, r, 11,
+            f'=IF(E{r}="","—",IF(E{r}>=1.05,"✅ On Track",IF(E{r}>=0.95,"⚠️ Warning",IF(E{r}>=0.8,"💤 Delayed","🔴 Critical"))))',
+            bg=C_EDIT, fg=C_HDR_F, sz=9)
+        ws_evm.row_dimensions[r].height = 18
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SHEET 6 — Dashboard  (KPI summary, all formula-linked)
+    # ═══════════════════════════════════════════════════════════════════════════
+    ws_db = wb.create_sheet("Dashboard")
+    ws_db.sheet_view.showGridLines = False
+    ws_db.column_dimensions["A"].width = 28
+    ws_db.column_dimensions["B"].width = 22
+    ws_db.column_dimensions["C"].width = 28
+    ws_db.column_dimensions["D"].width = 22
+
+    # Title
+    ws_db.merge_cells("A1:D1")
+    tc = ws_db.cell(row=1, column=1, value="📈 PROJECT DASHBOARD — KEY PERFORMANCE INDICATORS")
+    tc.fill = _fill(C_DASH); tc.font = _font(C_HDR_F, True, 14)
+    tc.alignment = Alignment(horizontal="center", vertical="center")
+    ws_db.row_dimensions[1].height = 32
+
+    # Current month row ref in S-Curve sheet
+    sc_cm_row = cm_idx + 1   # row in S-Curve (row 2 = M1)
+
+    kpis = [
+        # (label, formula_or_value, num_fmt, col_start)
+        ("── PROJECT INFO ──",  "",  None, 1),
+        ("Project Name",        f"='Project Info'!B2", None, 1),
+        ("Contract No.",        f"='Project Info'!B3", None, 1),
+        ("Total Budget (THB)",  f"={BUDGET_REF}",    "#,##0", 1),
+        ("Duration (months)",   f"='Project Info'!B8", "0", 1),
+        ("",                    "",  None, 1),
+        ("── SCHEDULE PERFORMANCE ──", "", None, 1),
+        (f"PV (Plan%) M{cm_idx}",    f"='S-Curve'!B{sc_cm_row}", "0.00", 1),
+        (f"EV (Actual%) M{cm_idx}",  f"='S-Curve'!C{sc_cm_row}", "0.00", 1),
+        (f"SV (M{cm_idx})",          f"='S-Curve'!D{sc_cm_row}", "0.00", 1),
+        (f"SPI (M{cm_idx})",         f"='S-Curve'!E{sc_cm_row}", "0.00", 1),
+        ("",                    "",  None, 1),
+        ("── COST PERFORMANCE ──", "", None, 1),
+        (f"PV Cost M{cm_idx} (฿)",   f"='S-Curve'!F{sc_cm_row}", "#,##0", 1),
+        (f"AC M{cm_idx} (฿)",        f"='S-Curve'!G{sc_cm_row}", "#,##0", 1),
+        (f"EV Cost M{cm_idx} (฿)",   f"='S-Curve'!H{sc_cm_row}", "#,##0", 1),
+        (f"CV M{cm_idx} (฿)",        f"='S-Curve'!I{sc_cm_row}", "#,##0", 1),
+        (f"CPI M{cm_idx}",           f"='S-Curve'!J{sc_cm_row}", "0.00", 1),
+        ("Budget Remaining (฿)",     f"={BUDGET_REF}-'S-Curve'!G{sc_cm_row}", "#,##0", 1),
+        ("",                    "",  None, 1),
+        ("── ACTIVITY SUMMARY ──", "", None, 1),
+        ("Total Activities",    len(acts), "0", 1),
+        ("Completed",           sum(1 for a in acts if "Completed" in a.get("status","")), "0", 1),
+        ("In Progress",         sum(1 for a in acts if "In Progress" in a.get("status","")), "0", 1),
+        ("Delayed",             sum(1 for a in acts if "Delayed" in a.get("status","")), "0", 1),
+    ]
+
+    for ri, (lbl, val, fmt, _) in enumerate(kpis, 2):
+        is_section = lbl.startswith("──")
+        is_blank   = lbl == ""
+        bg_l = C_HDR  if is_section else (C_DASH if is_blank else C_LABEL)
+        bg_v = C_HDR  if is_section else (C_DASH if is_blank else C_FORM)
+        fg   = C_HDR_F
+        _ap(ws_db, ri, 1, lbl, bg=bg_l, fg=fg, bold=is_section, sz=10 if is_section else 9, align="left")
+        cell_v = _ap(ws_db, ri, 2, val if not is_section else "",
+                     bg=bg_v, fg=fg, bold=is_section, sz=10 if is_section else 9, num_fmt=fmt)
+        ws_db.row_dimensions[ri].height = 20 if is_section else 18
+
+    ws_db.row_dimensions[2].height = 4  # spacer after title
 
     buf = _io.BytesIO()
     wb.save(buf)
@@ -1659,7 +1869,7 @@ elif page=="📝 Update Progress":
             use_container_width=True,
             type="primary"
         )
-        st.caption("3 sheets: **Progress** (editable), **S-Curve Data**, **Project Info**. Edit Status & month cells, then import back below.")
+        st.caption("6 sheets: **Dashboard** · **Progress** · **Cost** · **S-Curve** · **EVM** · **Project Info** — all linked with Excel formulas.")
 
     with im_col:
         st.markdown("**📤 Import from Excel**")
