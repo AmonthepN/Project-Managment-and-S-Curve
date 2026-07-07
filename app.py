@@ -160,8 +160,19 @@ _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(_APP_DIR, "projects.db")
 
 def db_connect():
+    # Remove stale SQLite rollback-journal before opening (prevents data loss after
+    # in-place DB replacement).  WAL mode is used for all subsequent writes.
+    _journal = DB_FILE + "-journal"
+    if os.path.exists(_journal):
+        try: os.remove(_journal)
+        except OSError: pass          # if locked, SQLite itself will clean it up
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except Exception:
+        pass
     return conn
 
 def db_init():
@@ -193,8 +204,88 @@ def db_init():
         )
     """)
     conn.commit()
-    # Migrate from project_manifest.json + JSON files if DB is empty
-    if conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0:
+    # ── Check if DB is empty ──────────────────────────────────────────────────
+    _db_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+
+    # ── Auto-seed from scurve_wbs_import_v2.csv (highest priority) ───────────
+    _seed_csv = os.path.join(_APP_DIR, "scurve_wbs_import_v2.csv")
+    if _db_count == 0 and os.path.exists(_seed_csv):
+        try:
+            import csv as _csv_mod
+            def __ext(notes, k): m=re.search(rf'{k}: ([^\|]+)', notes or ""); return m.group(1).strip() if m else ""
+            def __mnths(notes):
+                raw=__ext(notes,"Months")
+                try: return [int(x) for x in raw.split(",") if x.strip()]
+                except: return []
+            _BUDGET_MAP={
+                "CM/จังหวัด":4083000,"CM/ตำบล":4083000,
+                "CR/จังหวัด":2131000,"CR/ตำบล":2131000,
+                "LP/จังหวัด":2090500,"LP/ตำบล":2090500,
+                "PY/จังหวัด":2057000,"PY/ตำบล":2057000,
+                "โครงการย่อย 1 จ.เชียงใหม่":8166000,
+                "โครงการย่อย 2 จ.เชียงราย":4262000,
+                "โครงการย่อย 3 จ.ลำพูน":4181000,
+                "โครงการย่อย 4 จ.พะเยา":4114000,
+                "ชุดโครงการ (4 จังหวัด)":20723000,
+            }
+            _DOC_MAP={
+                "CM/จังหวัด":"CM","CM/ตำบล":"CM",
+                "CR/จังหวัด":"CR","CR/ตำบล":"CR",
+                "LP/จังหวัด":"LP","LP/ตำบล":"LP",
+                "PY/จังหวัด":"PY","PY/ตำบล":"PY",
+                "โครงการย่อย 1 จ.เชียงใหม่":"CM","โครงการย่อย 2 จ.เชียงราย":"CR",
+                "โครงการย่อย 3 จ.ลำพูน":"LP","โครงการย่อย 4 จ.พะเยา":"PY",
+                "ชุดโครงการ (4 จังหวัด)":"FULL",
+            }
+            with open(_seed_csv, encoding="utf-8-sig") as _f:
+                _seed_rows = list(_csv_mod.DictReader(_f))
+            from collections import OrderedDict as _OD
+            _phase_map = _OD()
+            for _r in _seed_rows: _phase_map.setdefault(_r["PHASE"],[]).append(_r)
+            _now2 = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for _phase, _prows in _phase_map.items():
+                _budget  = _BUDGET_MAP.get(_phase, 0)
+                _doc     = _DOC_MAP.get(_phase, "CUSTOM")
+                _pname   = _prows[0].get("PROJECT", _phase)
+                _safe_k  = re.sub(r'[^A-Za-z0-9_]','_',_phase)[:40]
+                _acts = []
+                for _i, _r in enumerate(_prows):
+                    _ms = __mnths(_r.get("NOTES",""))
+                    if not _ms: continue
+                    try: _wt = float(__ext(_r.get("NOTES",""),"Weight %"))
+                    except: _wt = 0.0
+                    try: _pc = float(__ext(_r.get("NOTES",""),"Estimated cost"))
+                    except: _pc = 0.0
+                    _wbs  = __ext(_r.get("NOTES",""),"WBS")
+                    _stat = __ext(_r.get("NOTES",""),"Status") or "Not Started"
+                    _acts.append({
+                        "no": _wbs or str(_i+1), "name": _r["TASK NAME"].strip(),
+                        "name_th": _r["TASK NAME"].strip(), "weight": _wt,
+                        "planned_cost": _pc, "start_month": min(_ms), "end_month": max(_ms),
+                        "status": _stat, "actuals": {}, "actual_costs": {},
+                    })
+                _proj = {
+                    "project_name": _pname, "project_name_th": _pname,
+                    "start_date": "2026-06-01", "end_date": "2027-05-31",
+                    "n_months": 12, "total_budget": float(_budget),
+                    "contract_no": "", "project_owner": "NRCT",
+                    "contractor": "Faculty of Engineering, CMU",
+                    "activities": _acts,
+                    "_db_key": _safe_k, "_db_doc": _doc, "_db_phase": _phase,
+                }
+                conn.execute("""INSERT OR IGNORE INTO projects
+                    (key,project_name,project_name_th,doc,phase,n_activities,
+                     total_budget,data_json,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (_safe_k, _pname, _pname, _doc, _phase, len(_acts),
+                     float(_budget), json.dumps(_proj, ensure_ascii=False), _now2, _now2))
+            conn.commit()
+            _db_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
+        except Exception:
+            pass
+
+    # ── Migrate from project_manifest.json + JSON files if DB still empty ────
+    if _db_count == 0:
         mf = "projects/project_manifest.json"
         if os.path.exists(mf):
             with open(mf, encoding="utf-8") as f:
