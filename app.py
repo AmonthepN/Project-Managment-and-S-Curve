@@ -343,12 +343,18 @@ def save_data(d):
 
 @st.cache_data
 def get_labels(start_iso, n):
-    base=datetime.strptime(start_iso,"%Y-%m-%d")
+    try:
+        base=datetime.strptime(str(start_iso)[:10],"%Y-%m-%d")
+    except Exception:
+        base=datetime.today()
     return [(base+relativedelta(months=m)).strftime("%b %Y") for m in range(n)]
 
 def cur_month(start_iso,n):
-    base=datetime.strptime(start_iso,"%Y-%m-%d"); t=datetime.today()
-    return max(1,min((t.year-base.year)*12+(t.month-base.month)+1,n))
+    try:
+        base=datetime.strptime(str(start_iso)[:10],"%Y-%m-%d"); t=datetime.today()
+        return max(1,min((t.year-base.year)*12+(t.month-base.month)+1,n))
+    except Exception:
+        return 1
 
 def compute(data):
     n=data["n_months"]; pm=[0.0]*n; am=[0.0]*n
