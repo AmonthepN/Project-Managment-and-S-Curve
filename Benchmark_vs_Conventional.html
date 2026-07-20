@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extra-Base Benchmark vs Conventional</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+ body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:24px;background:#f5f6f8;color:#1a1a1a;line-height:1.5;}
+ h1{font-size:21px;margin:0 0 4px;} h2{font-size:15px;color:#1F4E78;margin:18px 0 6px;border-bottom:2px solid #e2e4e8;padding-bottom:4px;}
+ .sub{color:#666;font-size:13px;margin-bottom:12px;}
+ .ctl{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+ .tab{padding:8px 15px;border-radius:8px;border:1px solid #bbb;background:#fff;cursor:pointer;font-size:14px;font-weight:bold;}
+ .tab.on{background:#1F4E78;color:#fff;border-color:#1F4E78;}
+ .seg{display:inline-flex;border:1px solid #1F4E78;border-radius:8px;overflow:hidden;}
+ .seg button{padding:8px 14px;border:none;background:#fff;color:#1F4E78;cursor:pointer;font-size:14px;font-weight:bold;}
+ .seg button.on{background:#1F4E78;color:#fff;}
+ .card{background:#fff;border:1px solid #e2e4e8;border-radius:8px;padding:8px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+ .plot{width:100%;height:520px;}
+ table{border-collapse:collapse;font-size:13px;margin-top:8px;}th,td{border:1px solid #dfe2e6;padding:6px 11px;text-align:center;}th{background:#1F4E78;color:#fff;}td.k{text-align:left;font-weight:bold;background:#f0f3f8;}
+ .g{background:#e2efda;} .r{background:#fce4e4;}
+ .note{background:#fff;border:1px solid #e2e4e8;border-radius:8px;padding:12px 16px;font-size:12.5px;color:#333;margin-top:14px;line-height:1.55;}
+ .note b{color:#1F4E78;} .rec{border-left:4px solid #2ca02c;background:#f0f8f0;}
+</style></head><body>
+<h1>Extra-Base Performance Benchmarked to Conventional Road</h1>
+<div class="sub">Benchmark = Conventional (0 %). Bars = % change in load-induced Δσ_yy delivered to the subgrade surface. <b style="color:#2ca02c">Green = below benchmark (less stress = better)</b>; <b style="color:#d62728">red = above benchmark (worse)</b>. Equal applied load in all cases.</div>
+<div class="ctl">
+ <span id="tabs"></span>
+ <span class="seg"><button id="bPct" class="on" onclick="setM('pct')">% vs Conventional</button><button id="bAbs" onclick="setM('abs')">Absolute Δσ_yy</button></span>
+</div>
+<div class="card"><div id="plot" class="plot"></div></div>
+<h2>Values — <span id="secname"></span></h2>
+<table id="tbl"></table>
+<div class="note rec"><b>Reading it.</b> Against the Conventional benchmark, thin Extra Bases (5–15 cm) sit <b>above</b> the line (they deliver more stress to their shallow subgrade), 20 cm is essentially on par, and from <b>25 cm</b> the Extra Base drops below Conventional — reaching −32 % at 50 cm and −37 % at 60 cm. First thickness to beat Conventional ≈ 25 cm; strong cost-effective relief ≈ 50 cm before the curve flattens.</div>
+<script>
+const J={"A-A": {"conv": 13.8, "rows": [{"case": "Conventional", "val": 13.8, "pct": 0.0}, {"case": "5 cm", "val": 15.44, "pct": 11.9}, {"case": "10 cm", "val": 15.19, "pct": 10.1}, {"case": "15 cm", "val": 14.79, "pct": 7.2}, {"case": "20 cm", "val": 14.11, "pct": 2.2}, {"case": "25 cm", "val": 13.21, "pct": -4.3}, {"case": "50 cm", "val": 11.4, "pct": -17.4}, {"case": "60 cm", "val": 10.73, "pct": -22.2}]}, "B-B": {"conv": 18.9, "rows": [{"case": "Conventional", "val": 18.9, "pct": 0.0}, {"case": "5 cm", "val": 22.57, "pct": 19.4}, {"case": "10 cm", "val": 21.45, "pct": 13.5}, {"case": "15 cm", "val": 20.14, "pct": 6.6}, {"case": "20 cm", "val": 18.46, "pct": -2.3}, {"case": "25 cm", "val": 16.34, "pct": -13.6}, {"case": "50 cm", "val": 12.93, "pct": -31.6}, {"case": "60 cm", "val": 11.91, "pct": -37.0}]}, "C-C": {"conv": 13.8, "rows": [{"case": "Conventional", "val": 13.8, "pct": 0.0}, {"case": "5 cm", "val": 15.44, "pct": 11.9}, {"case": "10 cm", "val": 15.18, "pct": 10.0}, {"case": "15 cm", "val": 14.79, "pct": 7.2}, {"case": "20 cm", "val": 14.13, "pct": 2.4}, {"case": "25 cm", "val": 13.21, "pct": -4.3}, {"case": "50 cm", "val": 11.41, "pct": -17.3}, {"case": "60 cm", "val": 10.74, "pct": -22.2}]}};
+const COL={"Conventional":"#6c757d","5 cm":"#ff7f0e","10 cm":"#bcbd22","15 cm":"#2ca02c","20 cm":"#17becf","25 cm":"#9467bd","50 cm":"#1f77b4","60 cm":"#8c564b"};
+const SECS=["A-A","B-B","C-C"], SECLAB={"A-A":"A-A (Left)","B-B":"B-B (Centre)","C-C":"C-C (Right)"};
+const cfg={responsive:true,displaylogo:false,toImageButtonOptions:{format:"svg",filename:"benchmark_conventional"}};
+let SEC="B-B", M="pct";
+function setM(m){M=m;document.getElementById("bPct").classList.toggle("on",m=="pct");document.getElementById("bAbs").classList.toggle("on",m=="abs");draw();}
+function draw(){
+ const D=J[SEC], rows=D.rows, labels=rows.map(r=>r.case);
+ let y,colors,ytitle,texts,shapes=[],anns=[];
+ if(M=="pct"){
+   y=rows.map(r=>r.pct);
+   colors=rows.map(r=>r.case=="Conventional"?"#6c757d":(r.pct<0?"#2ca02c":"#d62728"));
+   ytitle="Change in subgrade Δσ_yy vs Conventional (%)";
+   texts=rows.map(r=>(r.pct>0?"+":"")+r.pct.toFixed(0)+"%");
+   shapes=[{type:"line",xref:"paper",x0:0,x1:1,y0:0,y1:0,line:{color:"#333",width:2}}];
+   anns=[{xref:"paper",x:0.99,y:0,yshift:12,text:"Conventional benchmark (0%)",showarrow:false,font:{color:"#333",size:11},xanchor:"right"}];
+ } else {
+   y=rows.map(r=>r.val);
+   colors=rows.map(r=>r.case=="Conventional"?"#6c757d":(r.val<D.conv?"#2ca02c":"#d62728"));
+   ytitle="Load-induced |Δσ_yy| at subgrade (kN/m²)";
+   texts=rows.map(r=>r.val.toFixed(1));
+   shapes=[{type:"line",xref:"paper",x0:0,x1:1,y0:D.conv,y1:D.conv,line:{color:"#d62728",width:2,dash:"dash"}}];
+   anns=[{xref:"paper",x:0.99,y:D.conv,yshift:12,text:"Conventional = "+D.conv.toFixed(1),showarrow:false,font:{color:"#d62728",size:11},xanchor:"right"}];
+ }
+ Plotly.newPlot("plot",[{x:labels,y:y,type:"bar",marker:{color:colors,line:{color:"#333",width:1}},
+   text:texts,textposition:"outside",textfont:{size:12}}],
+   {margin:{l:64,r:16,t:20,b:56},yaxis:{title:ytitle,gridcolor:"#eee",zeroline:false},
+    xaxis:{title:"Road section type"},shapes:shapes,annotations:anns,paper_bgcolor:"#fff",plot_bgcolor:"#fff"},cfg);
+ document.getElementById("secname").textContent=SECLAB[SEC];
+ let h="<tr><th>Case</th><th>Δσ_yy @ subgrade (kN/m²)</th><th>% vs Conventional</th><th>Verdict</th></tr>";
+ rows.forEach(r=>{const better=r.pct<0, cls=r.case=="Conventional"?"":(better?"g":"r");
+  const verdict=r.case=="Conventional"?"benchmark":(better?"✓ better (−"+Math.abs(r.pct).toFixed(0)+"%)":"✗ worse (+"+r.pct.toFixed(0)+"%)");
+  h+="<tr><td class='k'>"+r.case+"</td><td>"+r.val.toFixed(2)+"</td><td class='"+cls+"'>"+(r.pct>0?"+":"")+r.pct.toFixed(1)+"%</td><td class='"+cls+"'>"+verdict+"</td></tr>";});
+ document.getElementById("tbl").innerHTML=h;
+ document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.s==SEC));
+}
+const tabs=document.getElementById("tabs");
+SECS.forEach(s=>{const b=document.createElement("span");b.className="tab";b.dataset.s=s;b.textContent=SECLAB[s];b.style.marginRight="6px";b.onclick=()=>{SEC=s;draw();};tabs.appendChild(b);});
+draw();
+</script></body></html>
